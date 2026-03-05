@@ -24,6 +24,7 @@ from tollbooth import (
     BTCPayClient,
     BTCPayError,
     ConstraintGate,
+    ECOSYSTEM_LINKS,
     LedgerCache,
     NeonVault,
     ToolTier,
@@ -187,6 +188,7 @@ class SampleOperator:
             "vault_configured": settings.neon_database_url is not None,
             "seed_balance_sats": settings.seed_balance_sats,
             "tool_costs": {k: int(v) for k, v in TOOL_COSTS.items() if v > 0},
+            "ecosystem_links": ECOSYSTEM_LINKS,
         }
 
     # ── Hot-path (Secure Courier) ─────────────────────────────────
