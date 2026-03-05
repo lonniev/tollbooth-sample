@@ -20,6 +20,8 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from datetime import datetime, timezone
+
 from tollbooth import (
     BTCPayClient,
     BTCPayError,
@@ -55,7 +57,9 @@ mcp = FastMCP(
         "Weather Stats MCP Service — powered by Open-Meteo and monetized "
         "via Tollbooth DPYC Bitcoin Lightning micropayments.\n\n"
         "Paid tools: weather_current (1 sat), weather_forecast (5 sats), "
-        "weather_historical (10 sats).\n"
+        "weather_historical (10 sats). Prices are base rates — the "
+        "Constraint Engine may apply discounts (happy hour, loyalty, free "
+        "trial) or surge pricing based on global demand.\n"
         "Free tools: weather_check_balance, weather_purchase_credits, "
         "weather_check_payment, weather_check_price, weather_service_status."
     ),
@@ -486,6 +490,36 @@ async def _ensure_dpyc_session() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _demand_window_key() -> str:
+    """Compute the current hourly demand window key (e.g. '2026-03-05T14:00')."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00")
+
+
+async def _get_global_demand(tool_name: str) -> dict[str, int]:
+    """Read global demand for *tool_name* from Neon.  Returns {tool: count}.
+
+    On error or when vault is unconfigured, returns empty dict (base pricing).
+    """
+    try:
+        vault = _get_commerce_vault()
+        count = await vault.get_demand(tool_name, _demand_window_key())
+        return {tool_name: count}
+    except Exception:
+        return {}
+
+
+def _fire_and_forget_demand_increment(tool_name: str) -> None:
+    """Increment the demand counter for *tool_name* — async, non-blocking."""
+    async def _increment() -> None:
+        try:
+            vault = _get_commerce_vault()
+            await vault.increment_demand(tool_name, _demand_window_key())
+        except Exception:
+            pass  # best-effort; stale counts just mean slightly off pricing
+
+    asyncio.create_task(_increment())
+
+
 async def _debit_or_error(tool_name: str) -> dict[str, Any] | None:
     """Check balance and debit credits for a paid tool call.
 
@@ -511,11 +545,13 @@ async def _debit_or_error(tool_name: str) -> dict[str, Any] | None:
     gate = _get_gate()
     if gate and gate.enabled:
         ledger = await cache.get(npub)
+        demand = await _get_global_demand(tool_name)
         denial, effective_cost = gate.check(
             tool_name=tool_name,
             base_cost=cost,
             ledger=ledger,
             npub=npub,
+            global_demand=demand,
         )
         if denial is not None:
             return denial
@@ -535,6 +571,10 @@ async def _debit_or_error(tool_name: str) -> dict[str, Any] | None:
                 f"Use weather_purchase_credits to add funds."
             ),
         }
+
+    # Successful debit — increment global demand counter (fire-and-forget)
+    _fire_and_forget_demand_increment(tool_name)
+
     return None
 
 
@@ -688,12 +728,16 @@ async def check_price(tool_name: str) -> dict[str, Any]:
             npub = await _ensure_dpyc_session()
             cache = _get_ledger_cache()
             ledger = await cache.get(npub)
+            demand = await _get_global_demand(tool_name)
             denial, effective = gate.check(
                 tool_name=tool_name,
                 base_cost=int(base_cost),
                 ledger=ledger,
                 npub=npub,
+                global_demand=demand,
             )
+            if demand.get(tool_name, 0) > 0:
+                result["current_demand"] = demand[tool_name]
             if denial:
                 result["effective_cost_api_sats"] = 0
                 result["constraint_effects"].append(
