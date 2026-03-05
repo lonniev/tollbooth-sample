@@ -3,3 +3,4 @@ install: pip install -e .
 command: python -m tollbooth_sample.server
 runtime:
   python: "3.12"
+# redeploy: 2026-03-05 tollbooth-dpyc 0.1.75 (surge pricing + fire-and-forget flushes)
