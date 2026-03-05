@@ -1,0 +1,5 @@
+name: tollbooth-sample
+install: pip install -e .
+command: python -m tollbooth_sample.server
+runtime:
+  python: "3.12"

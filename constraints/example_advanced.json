@@ -1,0 +1,21 @@
+{
+  "tool_constraints": {
+    "current": {
+      "constraints": [
+        {"type": "free_trial", "first_n_free": 10},
+        {"type": "loyalty_discount", "threshold_sats": 100, "discount_percent": 20.0}
+      ]
+    },
+    "forecast": {
+      "constraints": [
+        {"type": "temporal_window", "schedule": "06:00-22:00", "timezone": "America/New_York"},
+        {"type": "bulk_bonus", "threshold_count": 5, "bonus_percent": 10.0}
+      ]
+    },
+    "historical": {
+      "constraints": [
+        {"type": "finite_supply", "max_invocations": 50, "scope": "global"}
+      ]
+    }
+  }
+}
