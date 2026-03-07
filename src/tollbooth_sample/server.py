@@ -445,17 +445,54 @@ def _get_gate() -> ConstraintGate | None:
     return _gate
 
 
+_courier_service = None
+
+_DEFAULT_RELAY = "wss://nostr.wine"
+_FALLBACK_POOL = [
+    "wss://relay.primal.net",
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+]
+
+
 def _get_courier_service():
-    """Return the SecureCourierService singleton, or None if not configured."""
+    """Return the SecureCourierService singleton, or None if not configured.
+
+    Constructs a minimal courier with no credential templates — this service
+    has no patron secrets to exchange (Open-Meteo is free/keyless).  The
+    courier is still useful for ``send_dm()`` (e.g. invoice DM delivery).
+    """
+    global _courier_service
+    if _courier_service is not None:
+        return _courier_service
+
     try:
-        from tollbooth import SecureCourierService
+        from tollbooth.nostr_diagnostics import probe_relay_liveness
+        from tollbooth.secure_courier import SecureCourierService
     except ImportError:
         return None
+
     settings = get_settings()
     if not settings.tollbooth_nostr_operator_nsec:
         return None
-    # Build courier — real implementations configure relays, templates, etc.
-    return None  # Placeholder: configure SecureCourierService for your deployment
+
+    # Resolve relays — probe default, fall back to pool
+    relays = [_DEFAULT_RELAY]
+    results = probe_relay_liveness(relays, timeout=5)
+    live = [r["relay"] for r in results if r["connected"]]
+    if not live:
+        fallback_results = probe_relay_liveness(_FALLBACK_POOL, timeout=5)
+        live = [r["relay"] for r in fallback_results if r["connected"]]
+    if not live:
+        live = relays + _FALLBACK_POOL
+
+    _courier_service = SecureCourierService(
+        operator_nsec=settings.tollbooth_nostr_operator_nsec,
+        relays=live,
+        templates={},  # No credential exchange — weather API needs no patron secrets
+    )
+    return _courier_service
 
 
 async def _resolve_authority_npub() -> str:
