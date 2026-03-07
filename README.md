@@ -125,6 +125,12 @@ See [`constraints/example_basic.json`](constraints/example_basic.json) and
 [`constraints/example_advanced.json`](constraints/example_advanced.json)
 for configuration examples.
 
+## Becoming an Operator
+
+New to Tollbooth? See **[GETTING-STARTED.md](GETTING-STARTED.md)** for a
+step-by-step guide covering Nostr keypair setup, Authority enrollment,
+BTCPay configuration, and deploying your first monetized MCP service.
+
 ## Quick Start
 
 ### Local development (no gating)
