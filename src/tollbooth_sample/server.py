@@ -284,6 +284,18 @@ class SampleOperator:
         cache = _get_ledger_cache()
         settings = get_settings()
         authority_npub = await _resolve_authority_npub()
+
+        # Fire-and-forget invoice DM — courier may not be available
+        invoice_dm_cb = None
+        try:
+            courier = _get_courier_service()
+            if courier is not None and courier.enabled:
+                async def _send_invoice_dm(msg: str) -> None:
+                    courier.exchange.send_dm(npub, msg)
+                invoice_dm_cb = _send_invoice_dm
+        except Exception:
+            pass  # courier unavailable — skip DM
+
         return await credits.purchase_credits_tool(
             btcpay,
             cache,
@@ -292,6 +304,7 @@ class SampleOperator:
             certificate,
             authority_npub,
             default_credit_ttl_seconds=settings.credit_ttl_seconds,
+            invoice_dm_callback=invoice_dm_cb,
         )
 
     async def check_payment(
