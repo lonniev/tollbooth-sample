@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tollbooth-sample"
-version = "0.1.0"
+version = "0.1.1"
 description = "Educational Weather Stats MCP Service — Tollbooth DPYC monetization sample"
 readme = "README.md"
 license = "Apache-2.0"
