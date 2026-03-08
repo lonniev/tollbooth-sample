@@ -916,6 +916,7 @@ async def get_tax_rate() -> dict[str, Any]:
 async def lookup_member(npub: str) -> dict[str, Any]:
     """Look up a DPYC community member by their Nostr npub.
 
+    Can look up any role's npub — citizen, operator, or authority.
     Free — no authentication or credits required.
 
     Args:
