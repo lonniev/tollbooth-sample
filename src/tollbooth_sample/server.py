@@ -86,6 +86,8 @@ TOOL_COSTS: dict[str, int] = {
     "request_credential_channel": ToolTier.FREE,
     "receive_credentials": ToolTier.FREE,
     "forget_credentials": ToolTier.FREE,
+    "get_pricing_model": ToolTier.FREE,
+    "set_pricing_model": ToolTier.FREE,
 }
 
 # ---------------------------------------------------------------------------
@@ -394,6 +396,26 @@ def _get_current_user_id() -> str | None:
         return None
 
 
+_cached_operator_npub: str | None = None
+
+
+def _get_operator_npub() -> str:
+    global _cached_operator_npub
+    if _cached_operator_npub is not None:
+        return _cached_operator_npub
+    from pynostr.key import PrivateKey
+
+    settings = get_settings()
+    nsec = settings.tollbooth_nostr_operator_nsec
+    if not nsec:
+        raise RuntimeError(
+            "Operator misconfigured: TOLLBOOTH_NOSTR_OPERATOR_NSEC not set."
+        )
+    pk = PrivateKey.from_nsec(nsec)
+    _cached_operator_npub = pk.public_key.bech32()
+    return _cached_operator_npub
+
+
 def _get_commerce_vault() -> NeonVault:
     settings = get_settings()
     if not settings.neon_database_url:
@@ -430,6 +452,30 @@ def _get_btcpay() -> BTCPayClient:
         store_id=settings.btcpay_store_id,
     )
     return _btcpay_client
+
+
+# ---------------------------------------------------------------------------
+# Pricing model store singleton
+# ---------------------------------------------------------------------------
+
+_pricing_store: Any = None
+
+
+def _get_pricing_store() -> Any:
+    global _pricing_store
+    if _pricing_store is not None:
+        return _pricing_store
+    from tollbooth.pricing_store import PricingModelStore
+
+    vault = _get_commerce_vault()
+    _pricing_store = PricingModelStore(neon_vault=vault)
+    import asyncio
+
+    try:
+        asyncio.ensure_future(_pricing_store.ensure_schema())
+    except RuntimeError:
+        pass
+    return _pricing_store
 
 
 def _get_gate() -> ConstraintGate | None:
@@ -941,6 +987,37 @@ async def network_advisory() -> dict[str, Any]:
     Free — no authentication or credits required.
     """
     return await _call_oracle("network_advisory")
+
+
+# ---------------------------------------------------------------------------
+# Pricing CRUD tools
+# ---------------------------------------------------------------------------
+
+
+@tool
+async def get_pricing_model() -> dict[str, Any]:
+    """Get the active pricing model for this operator. Free."""
+    try:
+        store = _get_pricing_store()
+        operator = _get_operator_npub()
+    except (ValueError, RuntimeError) as e:
+        return {"status": "error", "error": str(e)}
+    from tollbooth.tools.pricing import get_pricing_model_tool
+
+    return await get_pricing_model_tool(store, operator)
+
+
+@tool
+async def set_pricing_model(model_json: str) -> dict[str, Any]:
+    """Set or update the active pricing model. Free — operator self-service."""
+    try:
+        store = _get_pricing_store()
+        operator = _get_operator_npub()
+    except (ValueError, RuntimeError) as e:
+        return {"status": "error", "error": str(e)}
+    from tollbooth.tools.pricing import set_pricing_model_tool
+
+    return await set_pricing_model_tool(store, operator, model_json)
 
 
 # ---------------------------------------------------------------------------
