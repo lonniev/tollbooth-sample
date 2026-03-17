@@ -86,6 +86,9 @@ TOOL_COSTS: dict[str, int] = {
     "request_credential_channel": ToolTier.FREE,
     "receive_credentials": ToolTier.FREE,
     "forget_credentials": ToolTier.FREE,
+    "get_pricing_model": ToolTier.FREE,
+    "set_pricing_model": ToolTier.RESTRICTED,
+    "list_constraint_types": ToolTier.FREE,
 }
 
 # ---------------------------------------------------------------------------
@@ -284,6 +287,18 @@ class SampleOperator:
         cache = _get_ledger_cache()
         settings = get_settings()
         authority_npub = await _resolve_authority_npub()
+
+        # Fire-and-forget invoice DM — courier may not be available
+        invoice_dm_cb = None
+        try:
+            courier = _get_courier_service()
+            if courier is not None and courier.enabled:
+                async def _send_invoice_dm(msg: str) -> None:
+                    courier.exchange.send_dm(npub, msg)
+                invoice_dm_cb = _send_invoice_dm
+        except Exception:
+            pass  # courier unavailable — skip DM
+
         return await credits.purchase_credits_tool(
             btcpay,
             cache,
@@ -292,6 +307,7 @@ class SampleOperator:
             certificate,
             authority_npub,
             default_credit_ttl_seconds=settings.credit_ttl_seconds,
+            invoice_dm_callback=invoice_dm_cb,
         )
 
     async def check_payment(
@@ -381,6 +397,26 @@ def _get_current_user_id() -> str | None:
         return None
 
 
+_cached_operator_npub: str | None = None
+
+
+def _get_operator_npub() -> str:
+    global _cached_operator_npub
+    if _cached_operator_npub is not None:
+        return _cached_operator_npub
+    from pynostr.key import PrivateKey
+
+    settings = get_settings()
+    nsec = settings.tollbooth_nostr_operator_nsec
+    if not nsec:
+        raise RuntimeError(
+            "Operator misconfigured: TOLLBOOTH_NOSTR_OPERATOR_NSEC not set."
+        )
+    pk = PrivateKey.from_nsec(nsec)
+    _cached_operator_npub = pk.public_key.bech32()
+    return _cached_operator_npub
+
+
 def _get_commerce_vault() -> NeonVault:
     settings = get_settings()
     if not settings.neon_database_url:
@@ -419,6 +455,30 @@ def _get_btcpay() -> BTCPayClient:
     return _btcpay_client
 
 
+# ---------------------------------------------------------------------------
+# Pricing model store singleton
+# ---------------------------------------------------------------------------
+
+_pricing_store: Any = None
+
+
+def _get_pricing_store() -> Any:
+    global _pricing_store
+    if _pricing_store is not None:
+        return _pricing_store
+    from tollbooth.pricing_store import PricingModelStore
+
+    vault = _get_commerce_vault()
+    _pricing_store = PricingModelStore(neon_vault=vault)
+    import asyncio
+
+    try:
+        asyncio.ensure_future(_pricing_store.ensure_schema())
+    except RuntimeError:
+        pass
+    return _pricing_store
+
+
 def _get_gate() -> ConstraintGate | None:
     """Return the ConstraintGate singleton, or None if constraints are off."""
     global _gate, _gate_initialized
@@ -432,17 +492,54 @@ def _get_gate() -> ConstraintGate | None:
     return _gate
 
 
+_courier_service = None
+
+_DEFAULT_RELAY = "wss://nostr.wine"
+_FALLBACK_POOL = [
+    "wss://relay.primal.net",
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+]
+
+
 def _get_courier_service():
-    """Return the SecureCourierService singleton, or None if not configured."""
+    """Return the SecureCourierService singleton, or None if not configured.
+
+    Constructs a minimal courier with no credential templates — this service
+    has no patron secrets to exchange (Open-Meteo is free/keyless).  The
+    courier is still useful for ``send_dm()`` (e.g. invoice DM delivery).
+    """
+    global _courier_service
+    if _courier_service is not None:
+        return _courier_service
+
     try:
-        from tollbooth import SecureCourierService
+        from tollbooth.nostr_diagnostics import probe_relay_liveness
+        from tollbooth.secure_courier import SecureCourierService
     except ImportError:
         return None
+
     settings = get_settings()
     if not settings.tollbooth_nostr_operator_nsec:
         return None
-    # Build courier — real implementations configure relays, templates, etc.
-    return None  # Placeholder: configure SecureCourierService for your deployment
+
+    # Resolve relays — probe default, fall back to pool
+    relays = [_DEFAULT_RELAY]
+    results = probe_relay_liveness(relays, timeout=5)
+    live = [r["relay"] for r in results if r["connected"]]
+    if not live:
+        fallback_results = probe_relay_liveness(_FALLBACK_POOL, timeout=5)
+        live = [r["relay"] for r in fallback_results if r["connected"]]
+    if not live:
+        live = relays + _FALLBACK_POOL
+
+    _courier_service = SecureCourierService(
+        operator_nsec=settings.tollbooth_nostr_operator_nsec,
+        relays=live,
+        templates={},  # No credential exchange — weather API needs no patron secrets
+    )
+    return _courier_service
 
 
 async def _resolve_authority_npub() -> str:
@@ -520,14 +617,42 @@ def _fire_and_forget_demand_increment(tool_name: str) -> None:
     asyncio.create_task(_increment())
 
 
-async def _debit_or_error(tool_name: str) -> dict[str, Any] | None:
+async def _debit_or_error(tool_name: str, **kwargs: Any) -> dict[str, Any] | None:
     """Check balance and debit credits for a paid tool call.
 
     Returns None on success (proceed with execution).
     Returns an error dict if insufficient balance or no session.
     Skips gating entirely in STDIO mode or when vault is unconfigured.
+
+    RESTRICTED tools (cost == ToolTier.RESTRICTED) are operator-only:
+    allowed at cost 0 if the caller's npub matches the operator npub,
+    rejected otherwise.  STDIO mode bypasses the restriction.
     """
     cost = TOOL_COSTS.get(tool_name, 0)
+
+    # RESTRICTED tier: operator-only access gate
+    if cost == ToolTier.RESTRICTED:
+        user_id = _get_current_user_id()
+        if not user_id:
+            return None  # STDIO mode — allow
+        try:
+            caller_npub = await _ensure_dpyc_session()
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+        if caller_npub != _get_operator_npub():
+            # Allow if caller provides a valid operator proof
+            proof = kwargs.get("operator_proof")
+            if proof:
+                from tollbooth.operator_proof import verify_operator_proof
+
+                if verify_operator_proof(proof, _get_operator_npub(), tool_name):
+                    return None  # proof verified — allow
+            return {
+                "success": False,
+                "error": "This tool is restricted to the operator.",
+            }
+        return None  # operator — allow at cost 0
+
     if cost == 0:
         return None
 
@@ -581,7 +706,7 @@ async def _debit_or_error(tool_name: str) -> dict[str, Any] | None:
 async def _rollback_debit(tool_name: str) -> None:
     """Undo a debit if the downstream API call fails."""
     cost = TOOL_COSTS.get(tool_name, 0)
-    if cost == 0 or not _get_current_user_id():
+    if cost <= 0 or not _get_current_user_id():
         return
     try:
         npub = await _ensure_dpyc_session()
@@ -866,6 +991,7 @@ async def get_tax_rate() -> dict[str, Any]:
 async def lookup_member(npub: str) -> dict[str, Any]:
     """Look up a DPYC community member by their Nostr npub.
 
+    Can look up any role's npub — citizen, operator, or authority.
     Free — no authentication or credits required.
 
     Args:
@@ -893,12 +1019,104 @@ async def network_advisory() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Pricing CRUD tools
+# ---------------------------------------------------------------------------
+
+
+@tool
+async def get_pricing_model() -> dict[str, Any]:
+    """Get the active pricing model for this operator. Free."""
+    try:
+        store = _get_pricing_store()
+        operator = _get_operator_npub()
+    except (ValueError, RuntimeError) as e:
+        return {"status": "error", "error": str(e)}
+    from tollbooth.tools.pricing import get_pricing_model_tool
+
+    return await get_pricing_model_tool(store, operator)
+
+
+@tool
+async def set_pricing_model(model_json: str) -> dict[str, Any]:
+    """Set or update the active pricing model.
+
+    Free — operator self-service tool.
+
+    Args:
+        model_json: JSON string with pricing model data.
+            May include "operator_proof" — a signed Nostr kind-27235 event
+            JSON string proving operator identity when the caller's session
+            npub differs from the operator npub.
+    """
+    # Extract operator_proof from inside model_json if present
+    import json as _json
+    operator_proof = ""
+    try:
+        parsed = _json.loads(model_json)
+        if isinstance(parsed, dict) and "operator_proof" in parsed:
+            operator_proof = parsed.pop("operator_proof", "")
+            model_json = _json.dumps(parsed)
+    except (ValueError, TypeError):
+        pass
+
+    err = await _debit_or_error("set_pricing_model", operator_proof=operator_proof)
+    if err:
+        return err
+    try:
+        store = _get_pricing_store()
+        operator = _get_operator_npub()
+    except (ValueError, RuntimeError) as e:
+        return {"status": "error", "error": str(e)}
+
+    # Verify caller is the operator (skip in STDIO mode)
+    user_id = _get_current_user_id()
+    if user_id is not None:
+        try:
+            caller_npub = await _ensure_dpyc_session()
+        except ValueError as e:
+            return {"status": "error", "error": str(e)}
+        if caller_npub != operator:
+            # Allow if a valid operator proof was provided
+            if not operator_proof:
+                return {"status": "error", "error": "Only the operator can modify pricing"}
+            from tollbooth.operator_proof import verify_operator_proof
+
+            if not verify_operator_proof(operator_proof, operator, "set_pricing_model"):
+                return {"status": "error", "error": "Only the operator can modify pricing"}
+
+    from tollbooth.tools.pricing import set_pricing_model_tool
+
+    return await set_pricing_model_tool(store, operator, model_json)
+
+
+@tool
+async def list_constraint_types() -> dict[str, Any]:
+    """List all available constraint types and their parameter schemas.
+
+    Returns the type, category, description, and parameter specs for
+    every constraint that can be used in a pricing pipeline.
+
+    Free — no credits required.
+    """
+    from tollbooth.tools.pricing import list_constraint_types as _list
+
+    return {"status": "ok", "constraint_types": _list()}
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 
 def main() -> None:
     """Main entry point for the server."""
+    from tollbooth import validate_operator_tools
+
+    missing = validate_operator_tools(mcp, "weather")
+    if missing:
+        import sys
+
+        print(f"\u26a0 Missing base-catalog tools: {', '.join(missing)}", file=sys.stderr)
     mcp.run()
 
 
