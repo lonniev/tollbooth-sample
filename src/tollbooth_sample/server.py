@@ -336,7 +336,7 @@ class SampleOperator:
             )
 
             url = await _resolve_authority_service_url()
-            return await AuthorityCertifier(url).certify(amount_sats)
+            return await AuthorityCertifier(url).certify_credits(amount_sats)
         except Exception as e:
             return {"success": False, "error": f"Certification failed: {e}"}
 
@@ -923,7 +923,7 @@ async def purchase_credits(amount_sats: int = 1000) -> dict[str, Any]:
         from tollbooth.authority_client import AuthorityCertifier
 
         authority_url = await _resolve_authority_service_url()
-        cert_result = await AuthorityCertifier(authority_url).certify(amount_sats)
+        cert_result = await AuthorityCertifier(authority_url).certify_credits(amount_sats)
         certificate = cert_result.get("certificate", "")
     except Exception as e:
         return {"success": False, "error": f"Authority certification failed: {e}"}
