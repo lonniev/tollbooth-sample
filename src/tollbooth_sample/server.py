@@ -417,18 +417,94 @@ def _get_operator_npub() -> str:
     return _cached_operator_npub
 
 
-def _get_commerce_vault() -> NeonVault:
+_bootstrap_vault: NeonVault | None = None
+
+
+async def _get_commerce_vault_async() -> NeonVault:
+    """Get the NeonVault, bootstrapping from Authority if needed.
+
+    Tries env var first (legacy). If not set, bootstraps from Authority
+    using only the nsec — discovers Neon URL via get_operator_config.
+    """
+    global _bootstrap_vault
+    if _bootstrap_vault is not None:
+        return _bootstrap_vault
+
     settings = get_settings()
-    if not settings.neon_database_url:
-        raise ValueError(
-            "Commerce vault not configured. Set NEON_DATABASE_URL to enable credits."
+
+    # Legacy path: NEON_DATABASE_URL in env
+    if settings.neon_database_url:
+        nsec_hex = _get_nsec_hex()
+        vault = NeonVault(
+            database_url=settings.neon_database_url,
+            encryption_nsec_hex=nsec_hex,
         )
-    vault = NeonVault(database_url=settings.neon_database_url)
-    asyncio.ensure_future(vault.ensure_schema())
+        await vault.ensure_schema()
+        _bootstrap_vault = vault
+        return vault
+
+    # Bootstrap path: discover Neon URL from Authority
+    from tollbooth.bootstrap import ensure_bootstrapped
+    result = await ensure_bootstrapped()
+    if not result.success or not result.neon_database_url:
+        raise ValueError(
+            f"Bootstrap failed: {result.error or 'no Neon URL'}. "
+            "Operator may not be registered with an Authority."
+        )
+
+    vault = NeonVault(
+        database_url=result.neon_database_url,
+        encryption_nsec_hex=result.encryption_nsec_hex,
+    )
+    await vault.ensure_schema()
+    _bootstrap_vault = vault
+    logger.info("Commerce vault bootstrapped from Authority (encrypted)")
     return vault
 
 
+def _get_commerce_vault() -> NeonVault:
+    """Sync wrapper — schedules async bootstrap if needed."""
+    if _bootstrap_vault is not None:
+        return _bootstrap_vault
+    settings = get_settings()
+    if settings.neon_database_url:
+        nsec_hex = _get_nsec_hex()
+        vault = NeonVault(
+            database_url=settings.neon_database_url,
+            encryption_nsec_hex=nsec_hex,
+        )
+        asyncio.ensure_future(vault.ensure_schema())
+        return vault
+    raise ValueError(
+        "Commerce vault not yet bootstrapped. First tool call will trigger bootstrap."
+    )
+
+
+def _get_nsec_hex() -> str | None:
+    """Extract nsec hex from env for vault encryption."""
+    settings = get_settings()
+    nsec = settings.tollbooth_nostr_operator_nsec
+    if not nsec:
+        return None
+    if nsec.startswith("nsec1"):
+        from pynostr.key import PrivateKey  # type: ignore[import-untyped]
+        return PrivateKey.from_nsec(nsec).hex()
+    return nsec
+
+
+async def _get_ledger_cache_async() -> LedgerCache:
+    """Get the LedgerCache, bootstrapping if needed."""
+    global _ledger_cache
+    if _ledger_cache is not None:
+        return _ledger_cache
+    vault = await _get_commerce_vault_async()
+    _ledger_cache = LedgerCache(vault)
+    asyncio.ensure_future(_ledger_cache.start_background_flush())
+    return _ledger_cache
+
+
 def _get_ledger_cache() -> LedgerCache:
+    """Sync path — only works after async bootstrap has run."""
     global _ledger_cache
     if _ledger_cache is not None:
         return _ledger_cache
