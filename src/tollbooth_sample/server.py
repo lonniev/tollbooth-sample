@@ -161,7 +161,7 @@ class SampleOperator:
     # ── Hot-path (local ledger) ───────────────────────────────────
 
     async def check_balance(self, npub: str) -> dict[str, Any]:
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         settings = get_settings()
         return await credits.check_balance_tool(
             cache,
@@ -170,13 +170,13 @@ class SampleOperator:
         )
 
     async def account_statement(self, npub: str) -> dict[str, Any]:
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         return await credits.account_statement_tool(cache, npub)
 
     async def account_statement_infographic(
         self, npub: str
     ) -> dict[str, Any]:
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         data = await credits.account_statement_tool(cache, npub)
         return {"success": True, "statement": data}
 
@@ -184,7 +184,7 @@ class SampleOperator:
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         settings = get_settings()
         return await credits.restore_credits_tool(
             btcpay,
@@ -301,7 +301,7 @@ class SampleOperator:
         self, npub: str, amount_sats: int, certificate: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         settings = get_settings()
         authority_npub = await _resolve_authority_npub()
 
@@ -331,7 +331,7 @@ class SampleOperator:
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         settings = get_settings()
         return await credits.check_payment_tool(
             btcpay,
@@ -520,14 +520,16 @@ async def _get_ledger_cache_async() -> LedgerCache:
 
 
 def _get_ledger_cache() -> LedgerCache:
-    """Sync path — only works after async bootstrap has run."""
-    global _ledger_cache
+    """Sync path — only returns the already-bootstrapped cache.
+
+    Call ``await _get_ledger_cache_async()`` from tool functions
+    to trigger bootstrap on first use.
+    """
     if _ledger_cache is not None:
         return _ledger_cache
-    vault = _get_commerce_vault()
-    _ledger_cache = LedgerCache(vault)
-    asyncio.ensure_future(_ledger_cache.start_background_flush())
-    return _ledger_cache
+    raise ValueError(
+        "Ledger cache not initialized. Use _get_ledger_cache_async()."
+    )
 
 
 def _get_btcpay() -> BTCPayClient:
@@ -590,7 +592,7 @@ def _get_pricing_store() -> Any:
         return _pricing_store
     from tollbooth.pricing_store import PricingModelStore
 
-    vault = _get_commerce_vault()
+    vault = _get_commerce_vault()  # sync — only works if already bootstrapped
     _pricing_store = PricingModelStore(neon_vault=vault)
     import asyncio
 
@@ -817,7 +819,7 @@ async def _debit_or_error(tool_name: str, npub: str = "", **kwargs: Any) -> dict
 
     try:
         npub = _resolve_npub(npub)
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
@@ -865,7 +867,7 @@ async def _rollback_debit(tool_name: str, npub: str = "") -> None:
         return
     try:
         npub = _resolve_npub(npub)
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         ledger = await cache.get(npub)
         ledger.rollback_debit(tool_name, cost)
         cache.mark_dirty(npub)
@@ -879,7 +881,7 @@ async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any
         return result
     try:
         npub = _resolve_npub(npub)
-        cache = _get_ledger_cache()
+        cache = await _get_ledger_cache_async()
         warning = credits.compute_low_balance_warning(await cache.get(npub))
         if warning:
             result["low_balance_warning"] = warning
@@ -1007,7 +1009,7 @@ async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
         # Show what constraints would do (without actually debiting)
         try:
             resolved = _resolve_npub(npub)
-            cache = _get_ledger_cache()
+            cache = await _get_ledger_cache_async()
             ledger = await cache.get(resolved)
             demand = await _get_global_demand(tool_name)
             denial, effective = gate.check(
@@ -1047,12 +1049,11 @@ async def check_balance(npub: str = "") -> dict[str, Any]:
 
     Free — no credits required. Pass your npub to identify yourself.
     """
-    op = _get_operator()
     try:
         npub = _resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
-    return await op.check_balance(npub)
+    return await _get_operator().check_balance(npub)
 
 
 @tool
