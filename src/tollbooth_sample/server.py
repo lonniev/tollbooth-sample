@@ -233,7 +233,7 @@ class SampleOperator:
     async def request_credential_channel(
         self, service: str, greeting: str, recipient_npub: str | None,
     ) -> dict[str, Any]:
-        courier = _get_courier_service()
+        courier = await _ensure_courier_service()
         if courier is None:
             return {
                 "success": False,
@@ -257,7 +257,7 @@ class SampleOperator:
     async def receive_credentials(
         self, sender_npub: str, service: str, credential_card: str,
     ) -> dict[str, Any]:
-        courier = _get_courier_service()
+        courier = await _ensure_courier_service()
         if courier is None:
             return {
                 "success": False,
@@ -280,7 +280,7 @@ class SampleOperator:
     async def forget_credentials(
         self, sender_npub: str, service: str,
     ) -> dict[str, Any]:
-        courier = _get_courier_service()
+        courier = await _ensure_courier_service()
         if courier is None:
             return {"success": False, "error": "Secure Courier not configured."}
         return await courier.forget(
@@ -300,7 +300,7 @@ class SampleOperator:
         # Fire-and-forget invoice DM — courier may not be available
         invoice_dm_cb = None
         try:
-            courier = _get_courier_service()
+            courier = await _ensure_courier_service()
             if courier is not None and courier.enabled:
                 async def _send_invoice_dm(msg: str) -> None:
                     courier.exchange.send_dm(npub, msg)
@@ -550,7 +550,7 @@ async def _ensure_btcpay() -> BTCPayClient:
     from tollbooth.tools.onboarding import load_config_from_vault
 
     creds = await load_config_from_vault(
-        _get_courier_service(),
+        await _ensure_courier_service(),
         CREDENTIAL_SERVICE,
         _get_operator_npub(),
         ["btcpay_host", "btcpay_api_key", "btcpay_store_id"],
@@ -619,11 +619,23 @@ _FALLBACK_POOL = [
 
 
 def _get_courier_service():
-    """Return the SecureCourierService singleton, or None if not configured.
+    """Sync accessor — returns the cached courier or None.
 
-    Constructs a minimal courier with no credential templates — this service
-    has no patron secrets to exchange (Open-Meteo is free/keyless).  The
-    courier is still useful for ``send_dm()`` (e.g. invoice DM delivery).
+    The courier must be initialized via ``_ensure_courier_service()``
+    (async) before this returns anything useful.
+    """
+    return _courier_service
+
+
+async def _ensure_courier_service():
+    """Async courier initialization — creates the courier with a
+    persistent NeonCredentialVault backed by the bootstrapped Neon URL.
+
+    On every cold start:
+    1. Bootstrap fetches Neon URL from Authority (cheap MCP call)
+    2. NeonVault + NeonCredentialVault created with that URL
+    3. SecureCourierService created with persistent vault
+    4. Credentials survive across restarts
     """
     global _courier_service
     if _courier_service is not None:
@@ -639,7 +651,7 @@ def _get_courier_service():
     if not settings.tollbooth_nostr_operator_nsec:
         return None
 
-    # Resolve relays — probe default, fall back to pool
+    # Resolve relays
     relays = [_DEFAULT_RELAY]
     results = probe_relay_liveness(relays, timeout=5)
     live = [r["relay"] for r in results if r["connected"]]
@@ -649,13 +661,25 @@ def _get_courier_service():
     if not live:
         live = relays + _FALLBACK_POOL
 
+    # Build credential vault from bootstrapped Neon URL
+    credential_vault = None
+    try:
+        commerce_vault = await _get_commerce_vault_async()
+        from tollbooth.vaults.neon import NeonCredentialVault
+        credential_vault = NeonCredentialVault(neon_vault=commerce_vault)
+        await credential_vault.ensure_schema()
+        logger.info("Courier credential vault backed by Neon (persistent)")
+    except Exception as exc:
+        logger.warning("No persistent credential vault: %s (credentials will be in-memory only)", exc)
+
     from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 
     _courier_service = SecureCourierService(
         operator_nsec=settings.tollbooth_nostr_operator_nsec,
         relays=live,
+        credential_vault=credential_vault,
         templates={
-            "tollbooth-sample-operator": CredentialTemplate(
+            CREDENTIAL_SERVICE: CredentialTemplate(
                 service="tollbooth-sample",
                 version=1,
                 description="Operator credentials for BTCPay Lightning payments",
@@ -1110,7 +1134,7 @@ async def get_onboarding_status() -> dict[str, Any]:
 
     return await get_onboarding_status_with_vault(
         settings=get_settings(),
-        courier_service=_get_courier_service(),
+        courier_service=await _ensure_courier_service(),
         service=CREDENTIAL_SERVICE,
         operator_npub=_get_operator_npub(),
     )
