@@ -1,9 +1,10 @@
 """Tollbooth Sample — Educational Weather Stats MCP Server.
 
 This server demonstrates Tollbooth DPYC monetization with a real-world
-weather API (Open-Meteo).  It implements OperatorProtocol from
-tollbooth-dpyc and optionally activates the Constraint Engine for
-dynamic pricing (free trials, happy hours, temporal windows).
+weather API (Open-Meteo).  Standard DPYC tools (check_balance,
+purchase_credits, Secure Courier, Oracle, pricing) are provided by
+``register_standard_tools`` from the tollbooth-dpyc wheel.  Only
+domain-specific weather tools are defined here.
 
 Run locally:
     python -m tollbooth_sample.server
@@ -16,28 +17,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from datetime import datetime, timezone
 from typing import Any
 
 from fastmcp import FastMCP
 
-from datetime import datetime, timezone
-
 from tollbooth import (
     BTCPayClient,
-    BTCPayError,
     ConstraintGate,
     ECOSYSTEM_LINKS,
     ToolTier,
-    TollboothConfig,
 )
-from tollbooth.actor_types import ToolPath, ToolPathInfo
+from tollbooth.runtime import OperatorRuntime, register_standard_tools, resolve_npub
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
-from tollbooth.operator_protocol import (
-    OPERATOR_BASE_CATALOG,
-    OPERATOR_OBSOLETE_PRACTICES,
-    OperatorProtocol,
-)
-from tollbooth.runtime import OperatorRuntime, resolve_npub
 from tollbooth.slug_tools import make_slug_tool
 from tollbooth.tools import credits
 
@@ -78,29 +71,15 @@ mcp = FastMCP(
 tool = make_slug_tool(mcp, "weather")
 
 # ---------------------------------------------------------------------------
-# Tool cost map
+# Tool cost map (domain tools only — standard tool costs are in the runtime)
 # ---------------------------------------------------------------------------
 
 TOOL_COSTS: dict[str, int] = {
     "current": ToolTier.READ,
     "forecast": ToolTier.WRITE,
     "historical": ToolTier.HEAVY,
-    "check_balance": ToolTier.FREE,
-    "purchase_credits": ToolTier.FREE,
-    "check_payment": ToolTier.FREE,
     "check_price": ToolTier.FREE,
-    "service_status": ToolTier.FREE,
-    "account_statement": ToolTier.FREE,
-    "account_statement_infographic": ToolTier.READ,
-    "restore_credits": ToolTier.FREE,
-    "session_status": ToolTier.FREE,
-    "request_credential_channel": ToolTier.FREE,
-    "receive_credentials": ToolTier.FREE,
-    "forget_credentials": ToolTier.FREE,
-    "get_pricing_model": ToolTier.FREE,
-    "set_pricing_model": ToolTier.RESTRICTED,
     "list_constraint_types": ToolTier.FREE,
-    "get_onboarding_status": ToolTier.FREE,
 }
 
 CREDENTIAL_SERVICE = "tollbooth-sample-operator"
@@ -125,306 +104,25 @@ runtime = OperatorRuntime(
 )
 
 # ---------------------------------------------------------------------------
-# Domain-specific tool catalog entries
+# Register all 20 standard DPYC tools from the wheel
 # ---------------------------------------------------------------------------
 
-DOMAIN_CATALOG: list[ToolPathInfo] = [
-    ToolPathInfo(
-        tool_name="current",
-        path=ToolPath.COLD,
-        requires_auth=True,
-        cost_tier="READ",
-        agent_hint="Current weather conditions for a lat/lon location.",
-    ),
-    ToolPathInfo(
-        tool_name="forecast",
-        path=ToolPath.COLD,
-        requires_auth=True,
-        cost_tier="WRITE",
-        agent_hint="Multi-day weather forecast (1-16 days) for a lat/lon location.",
-    ),
-    ToolPathInfo(
-        tool_name="historical",
-        path=ToolPath.COLD,
-        requires_auth=True,
-        cost_tier="HEAVY",
-        agent_hint="Historical weather data for a date range at a lat/lon location.",
-    ),
-    ToolPathInfo(
-        tool_name="check_price",
-        path=ToolPath.HOT,
-        requires_auth=False,
-        cost_tier="FREE",
-        agent_hint="Preview the effective cost of a tool (shows constraint effects).",
-    ),
-]
-
-# ---------------------------------------------------------------------------
-# SampleOperator — satisfies OperatorProtocol
-# ---------------------------------------------------------------------------
-
-
-class SampleOperator:
-    """Weather Stats operator implementing the DPYC OperatorProtocol.
-
-    This class is the single source of truth for Protocol conformance.
-    The @tool-decorated FastMCP functions below delegate to its methods.
-    """
-
-    @property
-    def slug(self) -> str:
-        return "weather"
-
-    @classmethod
-    def tool_catalog(cls) -> list[ToolPathInfo]:
-        return OPERATOR_BASE_CATALOG + DOMAIN_CATALOG
-
-    # ── Hot-path (local ledger) ───────────────────────────────────
-
-    async def check_balance(self, npub: str) -> dict[str, Any]:
-        cache = await runtime.ledger_cache()
-        settings = get_settings()
-        return await credits.check_balance_tool(
-            cache,
-            npub,
-            default_credit_ttl_seconds=settings.credit_ttl_seconds,
-        )
-
-    async def account_statement(self, npub: str) -> dict[str, Any]:
-        cache = await runtime.ledger_cache()
-        return await credits.account_statement_tool(cache, npub)
-
-    async def account_statement_infographic(
-        self, npub: str
-    ) -> dict[str, Any]:
-        cache = await runtime.ledger_cache()
-        data = await credits.account_statement_tool(cache, npub)
-        return {"success": True, "statement": data}
-
-    async def restore_credits(
-        self, npub: str, invoice_id: str
-    ) -> dict[str, Any]:
-        btcpay = await _ensure_btcpay()
-        cache = await runtime.ledger_cache()
-        settings = get_settings()
-        return await credits.restore_credits_tool(
-            btcpay,
-            cache,
-            npub,
-            invoice_id,
-            default_credit_ttl_seconds=settings.credit_ttl_seconds,
-        )
-
-    async def service_status(self) -> dict[str, Any]:
-        import os
-        settings = get_settings()
-        gate = _get_gate()
-        courier = None
-        try:
-            courier = await runtime.courier()
-        except Exception:
-            pass
-        return {
-            "success": True,
-            "service": "tollbooth-sample",
-            "version": __version__,
-            "slug": self.slug,
-            "constraints_enabled": gate.enabled if gate else False,
-            "btcpay_configured": settings.btcpay_host is not None or _btcpay_client is not None,
-            "vault_configured": settings.neon_database_url is not None or runtime._vault is not None,
-            "courier_has_vault": courier is not None and hasattr(courier, '_exchange') and courier._exchange._credential_vault is not None,
-            "seed_balance_sats": settings.seed_balance_sats,
-            "tool_costs": {k: int(v) for k, v in TOOL_COSTS.items() if v > 0},
-            "ecosystem_links": ECOSYSTEM_LINKS,
-            # Process identity — for testing Horizon lifecycle
-            "process_id": os.getpid(),
-            "process_boot_secs": int(_process_boot_time.timestamp()) if _process_boot_time else 0,
-            "process_uptime_secs": int((datetime.now(timezone.utc) - _process_boot_time).total_seconds()) if _process_boot_time else 0,
-        }
-
-    # ── Hot-path (Secure Courier) ─────────────────────────────────
-
-    async def session_status(self) -> dict[str, Any]:
-        user_id = _get_current_user_id()
-        if not user_id:
-            return {
-                "success": True,
-                "mode": "stdio",
-                "message": "Running in local development mode — no gating.",
-            }
-        return {
-            "success": True,
-            "mode": "multi-tenant",
-            "userId": user_id,
-            "hasSession": True,
-            "dpyc_npub": None,
-            "obsolete_practices": [
-                {"pattern": p.pattern, "replaced_by": p.replaced_by}
-                for p in OPERATOR_OBSOLETE_PRACTICES
-            ],
-        }
-
-    async def request_credential_channel(
-        self, service: str, greeting: str, recipient_npub: str | None,
-    ) -> dict[str, Any]:
-        courier = await runtime.courier()
-        if courier is None:
-            return {
-                "success": False,
-                "error": (
-                    "Secure Courier not configured. "
-                    "Set TOLLBOOTH_NOSTR_OPERATOR_NSEC to enable."
-                ),
-            }
-        try:
-            return await courier.open_channel(
-                service,
-                greeting=greeting or (
-                    "Hi — I'm Tollbooth Sample, an educational weather stats "
-                    "MCP service. You (or your AI agent) requested a credential channel."
-                ),
-                recipient_npub=recipient_npub,
-            )
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    async def receive_credentials(
-        self, sender_npub: str, service: str, credential_card: str,
-    ) -> dict[str, Any]:
-        courier = await runtime.courier()
-        if courier is None:
-            return {
-                "success": False,
-                "error": "Secure Courier not configured.",
-            }
-        try:
-            if credential_card:
-                return await courier.redeem_card(credential_card, service=service)
-            if not sender_npub:
-                return {
-                    "success": False,
-                    "error": "Either sender_npub or credential_card is required.",
-                }
-            return await courier.receive(
-                sender_npub, service=service, caller_id=_get_current_user_id(),
-            )
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    async def forget_credentials(
-        self, sender_npub: str, service: str,
-    ) -> dict[str, Any]:
-        courier = await runtime.courier()
-        if courier is None:
-            return {"success": False, "error": "Secure Courier not configured."}
-        return await courier.forget(
-            sender_npub, service=service, caller_id=_get_current_user_id(),
-        )
-
-    # ── Cold-path (BTCPay via Authority) ──────────────────────────
-
-    async def purchase_credits(
-        self, npub: str, amount_sats: int, certificate: str
-    ) -> dict[str, Any]:
-        btcpay = await _ensure_btcpay()
-        cache = await runtime.ledger_cache()
-        settings = get_settings()
-        authority_npub = await _resolve_authority_npub()
-
-        # Fire-and-forget invoice DM — courier may not be available
-        invoice_dm_cb = None
-        try:
-            courier = await runtime.courier()
-            if courier is not None and courier.enabled:
-                async def _send_invoice_dm(msg: str) -> None:
-                    courier.exchange.send_dm(npub, msg)
-                invoice_dm_cb = _send_invoice_dm
-        except Exception:
-            pass  # courier unavailable — skip DM
-
-        return await credits.purchase_credits_tool(
-            btcpay,
-            cache,
-            npub,
-            amount_sats,
-            certificate,
-            authority_npub,
-            default_credit_ttl_seconds=settings.credit_ttl_seconds,
-            invoice_dm_callback=invoice_dm_cb,
-        )
-
-    async def check_payment(
-        self, npub: str, invoice_id: str
-    ) -> dict[str, Any]:
-        btcpay = await _ensure_btcpay()
-        cache = await runtime.ledger_cache()
-        settings = get_settings()
-        return await credits.check_payment_tool(
-            btcpay,
-            cache,
-            npub,
-            invoice_id,
-            default_credit_ttl_seconds=settings.credit_ttl_seconds,
-        )
-
-    # ── Cold-path (delegates to Authority) ────────────────────────
-
-    async def certify_credits(
-        self, operator_id: str, amount_sats: int
-    ) -> dict[str, Any]:
-        try:
-            from tollbooth.authority_client import (
-                AuthorityCertifier,
-                AuthorityCertifyError,
-            )
-
-            url = await _resolve_authority_service_url()
-            return await AuthorityCertifier(url).certify_credits(amount_sats)
-        except Exception as e:
-            return {"success": False, "error": f"Certification failed: {e}"}
-
-    async def register_operator(self, npub: str) -> dict[str, Any]:
-        return await _call_oracle("request_citizenship", {"npub": npub})
-
-    async def operator_status(self) -> dict[str, Any]:
-        return {"success": True, "message": "Use service_status for this operator."}
-
-    # ── Cold-path (delegates to Oracle) ───────────────────────────
-
-    async def lookup_member(self, npub: str) -> dict[str, Any] | str:
-        return await _call_oracle("lookup_member", {"npub": npub})
-
-    async def how_to_join(self) -> str:
-        result = await _call_oracle("how_to_join")
-        return result.get("text", str(result)) if isinstance(result, dict) else result
-
-    async def get_tax_rate(self) -> dict[str, Any]:
-        return await _call_oracle("get_tax_rate")
-
-    async def about(self) -> str:
-        result = await _call_oracle("about")
-        return result.get("text", str(result)) if isinstance(result, dict) else result
-
-    async def network_advisory(self) -> str:
-        result = await _call_oracle("network_advisory")
-        return result.get("text", str(result)) if isinstance(result, dict) else result
-
+register_standard_tools(
+    mcp,
+    "weather",
+    runtime,
+    settings_fn=get_settings,
+    service_name="tollbooth-sample",
+    service_version=__version__,
+)
 
 # ---------------------------------------------------------------------------
 # Module-level singletons (domain-specific only)
 # ---------------------------------------------------------------------------
 
-_operator: SampleOperator | None = None
 _btcpay_client: BTCPayClient | None = None
 _gate: ConstraintGate | None = None
 _gate_initialized: bool = False
-
-
-def _get_operator() -> SampleOperator:
-    global _operator
-    if _operator is None:
-        _operator = SampleOperator()
-    return _operator
 
 
 def _get_current_user_id() -> str | None:
@@ -439,11 +137,7 @@ def _get_current_user_id() -> str | None:
 
 
 async def _ensure_btcpay() -> BTCPayClient:
-    """Load BTCPay config from credential vault (primary) or env vars (legacy).
-
-    The vault is the canonical source — credentials arrive via Secure Courier
-    and are stored encrypted in the NeonCredentialVault.
-    """
+    """Load BTCPay config from credential vault (primary) or env vars (legacy)."""
     global _btcpay_client
     if _btcpay_client is not None:
         return _btcpay_client
@@ -466,25 +160,6 @@ async def _ensure_btcpay() -> BTCPayClient:
     return _btcpay_client
 
 
-# ---------------------------------------------------------------------------
-# Pricing model store singleton
-# ---------------------------------------------------------------------------
-
-_pricing_store: Any = None
-
-
-async def _get_pricing_store() -> Any:
-    global _pricing_store
-    if _pricing_store is not None:
-        return _pricing_store
-    from tollbooth.pricing_store import PricingModelStore
-
-    vault = await runtime.vault()
-    _pricing_store = PricingModelStore(neon_vault=vault)
-    await _pricing_store.ensure_schema()
-    return _pricing_store
-
-
 def _get_gate() -> ConstraintGate | None:
     """Return the ConstraintGate singleton, or None if constraints are off."""
     global _gate, _gate_initialized
@@ -498,47 +173,16 @@ def _get_gate() -> ConstraintGate | None:
     return _gate
 
 
-async def _resolve_authority_npub() -> str:
-    from tollbooth import resolve_authority_npub
-
-    return await resolve_authority_npub()
-
-
-async def _resolve_authority_service_url() -> str:
-    from tollbooth import resolve_authority_service
-
-    return await resolve_authority_service()
-
-
-async def _call_oracle(
-    tool_name: str, arguments: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    """Delegate a tool call to the DPYC Oracle."""
-    try:
-        from tollbooth.oracle_client import OracleClient, OracleClientError
-        from tollbooth import resolve_oracle_service
-
-        oracle_url = await resolve_oracle_service()
-        return await OracleClient(oracle_url).call_tool(tool_name, arguments)
-    except Exception as e:
-        return {"success": False, "error": f"Oracle delegation failed: {e}"}
-
-
 # ---------------------------------------------------------------------------
 # Demand tracking helpers (domain-specific, uses runtime.vault())
 # ---------------------------------------------------------------------------
 
 
 def _demand_window_key() -> str:
-    """Compute the current hourly demand window key (e.g. '2026-03-05T14:00')."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00")
 
 
 async def _get_global_demand(tool_name: str) -> dict[str, int]:
-    """Read global demand for *tool_name* from Neon.  Returns {tool: count}.
-
-    On error or when vault is unconfigured, returns empty dict (base pricing).
-    """
     try:
         vault = await runtime.vault()
         count = await vault.get_demand(tool_name, _demand_window_key())
@@ -548,13 +192,12 @@ async def _get_global_demand(tool_name: str) -> dict[str, int]:
 
 
 def _fire_and_forget_demand_increment(tool_name: str) -> None:
-    """Increment the demand counter for *tool_name* — async, non-blocking."""
     async def _increment() -> None:
         try:
             vault = await runtime.vault()
             await vault.increment_demand(tool_name, _demand_window_key())
         except Exception:
-            pass  # best-effort; stale counts just mean slightly off pricing
+            pass
 
     asyncio.create_task(_increment())
 
@@ -580,10 +223,8 @@ async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any
 
 
 # ---------------------------------------------------------------------------
-# MCP tool registrations — delegate to SampleOperator
+# Domain-specific MCP tools
 # ---------------------------------------------------------------------------
-
-# ── Weather domain tools ──────────────────────────────────────────
 
 
 @tool
@@ -663,9 +304,6 @@ async def historical(
         return {"success": False, "error": str(e)}
 
 
-# ── Price preview ─────────────────────────────────────────────────
-
-
 @tool
 async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
     """Preview the effective cost of a tool call.
@@ -695,7 +333,6 @@ async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
     gate = _get_gate()
     if gate and gate.enabled and base_cost > 0:
         result["constraints_enabled"] = True
-        # Show what constraints would do (without actually debiting)
         try:
             resolved = resolve_npub(npub)
             cache = await runtime.ledger_cache()
@@ -727,293 +364,6 @@ async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
             )
 
     return result
-
-
-# ── Standard credit tools ─────────────────────────────────────────
-
-
-@tool
-async def check_balance(npub: str = "") -> dict[str, Any]:
-    """Check your current credit balance, tier info, and usage summary.
-
-    Free — no credits required. Pass your npub to identify yourself.
-    """
-    try:
-        npub = resolve_npub(npub)
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-    return await _get_operator().check_balance(npub)
-
-
-@tool
-async def purchase_credits(amount_sats: int = 1000, npub: str = "") -> dict[str, Any]:
-    """Buy credits via Bitcoin Lightning.
-
-    Creates a Lightning invoice. Pay it with any Lightning wallet, then
-    call weather_check_payment to confirm. Minimum 110 sats (100 net +
-    10 sat Authority certification fee).
-
-    Free — no credits required to call.
-
-    Args:
-        amount_sats: Number of satoshis to purchase (default 1000).
-    """
-    op = _get_operator()
-    try:
-        npub = resolve_npub(npub)
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-
-    # Auto-certify via Authority
-    try:
-        from tollbooth.authority_client import AuthorityCertifier
-
-        authority_url = await _resolve_authority_service_url()
-        cert_result = await AuthorityCertifier(authority_url).certify_credits(amount_sats)
-        certificate = cert_result.get("certificate", "")
-    except Exception as e:
-        return {"success": False, "error": f"Authority certification failed: {e}"}
-
-    try:
-        return await op.purchase_credits(npub, amount_sats, certificate)
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-
-
-@tool
-async def check_payment(invoice_id: str, npub: str = "") -> dict[str, Any]:
-    """Check the payment status of a Lightning invoice.
-
-    Call after paying the invoice from weather_purchase_credits.
-    On settlement, credits are added to your balance automatically.
-
-    Free — no credits required.
-
-    Args:
-        invoice_id: The BTCPay invoice ID from purchase_credits.
-    """
-    op = _get_operator()
-    try:
-        npub = resolve_npub(npub)
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-    try:
-        return await op.check_payment(npub, invoice_id)
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-
-
-@tool
-async def service_status() -> dict[str, Any]:
-    """Check the health and configuration of this weather service.
-
-    Free — no authentication or credits required.
-    """
-    return await _get_operator().service_status()
-
-
-@tool
-async def get_onboarding_status() -> dict[str, Any]:
-    """Report this operator's configuration readiness.
-
-    Shows which settings are configured, which are missing, and how
-    to deliver each missing value.  Authority-provisioned values
-    (like the Neon database URL) are fetched automatically on
-    registration.  Operator secrets (like BTCPay credentials) must
-    be delivered via Secure Courier encrypted DM.
-
-    Free — no authentication required.
-    """
-    return await runtime.onboarding_status(get_settings())
-
-
-# ── Secure Courier tools ─────────────────────────────────────────
-
-
-@tool
-async def session_status(npub: str = "") -> dict[str, Any]:
-    """Check the current session state — shows whether credentials
-    are active or onboarding is needed.
-
-    Free — no authentication required.
-    """
-    return await _get_operator().session_status()
-
-
-@tool
-async def request_credential_channel(
-    sender_npub: str = "",
-    service: str = "tollbooth-sample-operator",
-) -> dict[str, Any]:
-    """Open a Secure Courier channel for out-of-band credential delivery.
-
-    Sends a welcome DM to the provided npub with a credential template.
-    The recipient replies with their credentials via encrypted Nostr DM.
-    For operator onboarding, use service='tollbooth-sample-operator'.
-
-    Free — no credits required.
-    """
-    if not sender_npub:
-        sender_npub = runtime.operator_npub()
-    return await _get_operator().request_credential_channel(
-        service=service,
-        greeting="",
-        recipient_npub=sender_npub,
-    )
-
-
-@tool
-async def receive_credentials(
-    sender_npub: str = "",
-    service: str = "tollbooth-sample-operator",
-    credential_card: str = "",
-) -> dict[str, Any]:
-    """Pick up credentials from the Secure Courier.
-
-    Checks the vault first (instant), then polls Nostr relays for
-    encrypted DMs from the sender. On first receipt, sends a credential
-    card back to the sender for reuse.
-
-    Free — no credits required.
-    """
-    if not sender_npub:
-        sender_npub = runtime.operator_npub()
-    return await _get_operator().receive_credentials(
-        sender_npub=sender_npub,
-        service=service,
-        credential_card=credential_card,
-    )
-
-
-@tool
-async def forget_credentials(
-    service: str = "tollbooth-sample-operator",
-) -> dict[str, Any]:
-    """Delete vaulted credentials for key rotation.
-
-    The operator owner must re-deliver via Secure Courier after this.
-
-    Free — no credits required.
-    """
-    npub = runtime.operator_npub()
-    return await _get_operator().forget_credentials(npub, service)
-
-
-# ── Oracle delegation tools ───────────────────────────────────────
-
-
-@tool
-async def how_to_join() -> dict[str, Any]:
-    """Get DPYC onboarding instructions from the community Oracle.
-
-    Free — no authentication or credits required.
-    """
-    return await _call_oracle("how_to_join")
-
-
-@tool
-async def get_tax_rate() -> dict[str, Any]:
-    """Get the current DPYC certification tax rate from the Oracle.
-
-    Free — no authentication or credits required.
-    """
-    return await _call_oracle("get_tax_rate")
-
-
-@tool
-async def lookup_member(npub: str) -> dict[str, Any]:
-    """Look up a DPYC community member by their Nostr npub.
-
-    Can look up any role's npub — citizen, operator, or authority.
-    Free — no authentication or credits required.
-
-    Args:
-        npub: The Nostr public key (bech32 npub format) to look up.
-    """
-    return await _call_oracle("lookup_member", {"npub": npub})
-
-
-@tool
-async def about() -> dict[str, Any]:
-    """Describe the DPYC ecosystem via the community Oracle.
-
-    Free — no authentication or credits required.
-    """
-    return await _call_oracle("about")
-
-
-@tool
-async def network_advisory() -> dict[str, Any]:
-    """Get active network advisories from the DPYC Oracle.
-
-    Free — no authentication or credits required.
-    """
-    return await _call_oracle("network_advisory")
-
-
-# ---------------------------------------------------------------------------
-# Pricing CRUD tools
-# ---------------------------------------------------------------------------
-
-
-@tool
-async def get_pricing_model() -> dict[str, Any]:
-    """Get the active pricing model for this operator. Free."""
-    try:
-        store = await _get_pricing_store()
-        operator = runtime.operator_npub()
-    except (ValueError, RuntimeError) as e:
-        return {"status": "error", "error": str(e)}
-    from tollbooth.tools.pricing import get_pricing_model_tool
-
-    return await get_pricing_model_tool(store, operator)
-
-
-@tool
-async def set_pricing_model(model_json: str) -> dict[str, Any]:
-    """Set or update the active pricing model.
-
-    Free — operator self-service tool.
-
-    Args:
-        model_json: JSON string with pricing model data.
-            May include "operator_proof" — a signed Nostr kind-27235 event
-            JSON string proving operator identity when the caller's session
-            npub differs from the operator npub.
-    """
-    # Extract operator_proof from inside model_json if present
-    import json as _json
-    operator_proof = ""
-    try:
-        parsed = _json.loads(model_json)
-        if isinstance(parsed, dict) and "operator_proof" in parsed:
-            operator_proof = parsed.pop("operator_proof", "")
-            model_json = _json.dumps(parsed)
-    except (ValueError, TypeError):
-        pass
-
-    err = await runtime.debit_or_error("set_pricing_model", "", operator_proof=operator_proof)
-    if err:
-        return err
-    try:
-        store = await _get_pricing_store()
-        operator = runtime.operator_npub()
-    except (ValueError, RuntimeError) as e:
-        return {"status": "error", "error": str(e)}
-
-    # Verify caller is the operator (skip in STDIO mode)
-    user_id = _get_current_user_id()
-    if user_id is not None:
-        if not operator_proof:
-            return {"status": "error", "error": "Only the operator can modify pricing — provide operator_proof."}
-        from tollbooth.operator_proof import verify_operator_proof
-
-        if not verify_operator_proof(operator_proof, operator, "set_pricing_model"):
-            return {"status": "error", "error": "Only the operator can modify pricing"}
-
-    from tollbooth.tools.pricing import set_pricing_model_tool
-
-    return await set_pricing_model_tool(store, operator, model_json)
 
 
 @tool
