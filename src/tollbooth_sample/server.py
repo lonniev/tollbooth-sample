@@ -1063,14 +1063,14 @@ async def check_price(tool_name: str) -> dict[str, Any]:
 
 
 @tool
-async def check_balance() -> dict[str, Any]:
+async def check_balance(npub: str = "") -> dict[str, Any]:
     """Check your current credit balance, tier info, and usage summary.
 
-    Free — no credits required.
+    Free — no credits required. Pass your npub to identify yourself.
     """
     op = _get_operator()
     try:
-        npub = await _ensure_dpyc_session()
+        npub = await _ensure_dpyc_session(npub or None)
     except ValueError as e:
         return {"success": False, "error": str(e)}
     return await op.check_balance(npub)
