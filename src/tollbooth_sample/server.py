@@ -1081,6 +1081,82 @@ async def get_onboarding_status() -> dict[str, Any]:
     return get_onboarding_status_for(settings)
 
 
+# ── Secure Courier tools ─────────────────────────────────────────
+
+
+@tool
+async def session_status() -> dict[str, Any]:
+    """Check the current session state — shows whether credentials
+    are active or onboarding is needed.
+
+    Free — no authentication required.
+    """
+    try:
+        npub = await _ensure_dpyc_session()
+    except ValueError:
+        npub = _get_operator_npub()
+    return await _get_operator().session_status(npub)
+
+
+@tool
+async def request_credential_channel(
+    sender_npub: str = "",
+    service: str = "tollbooth-sample-operator",
+) -> dict[str, Any]:
+    """Open a Secure Courier channel for out-of-band credential delivery.
+
+    Sends a welcome DM to the provided npub with a credential template.
+    The recipient replies with their credentials via encrypted Nostr DM.
+    For operator onboarding, use service='tollbooth-sample-operator'.
+
+    Free — no credits required.
+    """
+    if not sender_npub:
+        sender_npub = _get_operator_npub()
+    return await _get_operator().request_credential_channel(
+        service=service,
+        greeting="",
+        recipient_npub=sender_npub,
+    )
+
+
+@tool
+async def receive_credentials(
+    sender_npub: str = "",
+    service: str = "tollbooth-sample-operator",
+    credential_card: str = "",
+) -> dict[str, Any]:
+    """Pick up credentials from the Secure Courier.
+
+    Checks the vault first (instant), then polls Nostr relays for
+    encrypted DMs from the sender. On first receipt, sends a credential
+    card back to the sender for reuse.
+
+    Free — no credits required.
+    """
+    if not sender_npub:
+        sender_npub = _get_operator_npub()
+    return await _get_operator().receive_credentials(
+        sender_npub=sender_npub,
+        service=service,
+        credential_card=credential_card,
+    )
+
+
+@tool
+async def forget_credentials(
+    service: str = "tollbooth-sample-operator",
+) -> dict[str, Any]:
+    """Delete vaulted credentials for key rotation.
+
+    The operator owner must re-deliver via Secure Courier after this.
+
+    Free — no credits required.
+    """
+    npub = _get_operator_npub()
+    return await _get_operator().forget_credentials(npub, service)
+
+
 # ── Oracle delegation tools ───────────────────────────────────────
 
 
