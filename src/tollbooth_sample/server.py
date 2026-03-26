@@ -226,13 +226,12 @@ class SampleOperator:
                 "mode": "stdio",
                 "message": "Running in local development mode — no gating.",
             }
-        npub = _dpyc_sessions.get(user_id)
         return {
             "success": True,
             "mode": "multi-tenant",
             "userId": user_id,
-            "hasSession": npub is not None,
-            "dpyc_npub": npub,
+            "hasSession": True,
+            "dpyc_npub": None,
             "obsolete_practices": [
                 {"pattern": p.pattern, "replaced_by": p.replaced_by}
                 for p in OPERATOR_OBSOLETE_PRACTICES
@@ -394,10 +393,6 @@ _ledger_cache: LedgerCache | None = None
 _btcpay_client: BTCPayClient | None = None
 _gate: ConstraintGate | None = None
 _gate_initialized: bool = False
-# npub is the SOLE credit identity. _dpyc_sessions is an optimization
-# cache — remembers which npub the current OAuth user last identified as.
-# Never authoritative; an explicit npub parameter always wins.
-_dpyc_sessions: dict[str, str] = {}  # horizon_id → last-used npub (cache only)
 
 
 def _get_operator() -> SampleOperator:
@@ -732,31 +727,14 @@ async def _call_oracle(
         return {"success": False, "error": f"Oracle delegation failed: {e}"}
 
 
-async def _ensure_dpyc_session(npub: str | None = None) -> str:
-    """Return the patron's npub for credit operations.
-
-    Args:
-        npub: Explicit npub from the tool call. If provided and valid,
-              used directly (and cached for subsequent calls).
-
-    Falls back to the session cache if no explicit npub.
-    """
-    if npub and npub.startswith("npub1") and len(npub) >= 60:
-        user_id = _get_current_user_id()
-        if user_id:
-            _dpyc_sessions[user_id] = npub
-        return npub
-
-    user_id = _get_current_user_id()
-    if not user_id:
-        raise ValueError("No user identity — running in STDIO mode.")
-    cached = _dpyc_sessions.get(user_id)
-    if cached:
-        return cached
-    raise ValueError(
-        "No DPYC session. Call session_status for onboarding steps, "
-        "or pass your npub explicitly."
-    )
+def _resolve_npub(npub: str) -> str:
+    """Validate and return the npub. No fallback, no session cache."""
+    if not npub or not npub.startswith("npub1") or len(npub) < 60:
+        raise ValueError(
+            "npub is required. Pass your Nostr public key (npub1...) "
+            "to identify yourself."
+        )
+    return npub
 
 
 # ---------------------------------------------------------------------------
@@ -794,7 +772,7 @@ def _fire_and_forget_demand_increment(tool_name: str) -> None:
     asyncio.create_task(_increment())
 
 
-async def _debit_or_error(tool_name: str, **kwargs: Any) -> dict[str, Any] | None:
+async def _debit_or_error(tool_name: str, npub: str = "", **kwargs: Any) -> dict[str, Any] | None:
     """Check balance and debit credits for a paid tool call.
 
     Returns None on success (proceed with execution).
@@ -813,7 +791,7 @@ async def _debit_or_error(tool_name: str, **kwargs: Any) -> dict[str, Any] | Non
         if not user_id:
             return None  # STDIO mode — allow
         try:
-            caller_npub = await _ensure_dpyc_session()
+            caller_npub = _resolve_npub(npub)
         except ValueError as e:
             return {"success": False, "error": str(e)}
         if caller_npub != _get_operator_npub():
@@ -838,7 +816,7 @@ async def _debit_or_error(tool_name: str, **kwargs: Any) -> dict[str, Any] | Non
         return None
 
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
         cache = _get_ledger_cache()
     except ValueError as e:
         return {"success": False, "error": str(e)}
@@ -880,13 +858,13 @@ async def _debit_or_error(tool_name: str, **kwargs: Any) -> dict[str, Any] | Non
     return None
 
 
-async def _rollback_debit(tool_name: str) -> None:
+async def _rollback_debit(tool_name: str, npub: str = "") -> None:
     """Undo a debit if the downstream API call fails."""
     cost = TOOL_COSTS.get(tool_name, 0)
     if cost <= 0 or not _get_current_user_id():
         return
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
         cache = _get_ledger_cache()
         ledger = await cache.get(npub)
         ledger.rollback_debit(tool_name, cost)
@@ -895,12 +873,12 @@ async def _rollback_debit(tool_name: str) -> None:
         logger.exception("Rollback failed for %s", tool_name)
 
 
-async def _with_warning(result: dict[str, Any]) -> dict[str, Any]:
+async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any]:
     """Append low_balance_warning to the result if balance is running low."""
     if not _get_current_user_id():
         return result
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
         cache = _get_ledger_cache()
         warning = credits.compute_low_balance_warning(await cache.get(npub))
         if warning:
@@ -918,7 +896,7 @@ async def _with_warning(result: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool
-async def current(latitude: float, longitude: float) -> dict[str, Any]:
+async def current(latitude: float, longitude: float, npub: str = "") -> dict[str, Any]:
     """Get current weather conditions for a location.
 
     Returns temperature, wind speed, and weather code from Open-Meteo.
@@ -928,20 +906,20 @@ async def current(latitude: float, longitude: float) -> dict[str, Any]:
         latitude: Latitude (-90 to 90).
         longitude: Longitude (-180 to 180).
     """
-    err = await _debit_or_error("current")
+    err = await _debit_or_error("current", npub=npub)
     if err:
         return err
     try:
         result = await weather.get_current(latitude, longitude)
-        return await _with_warning(result)
+        return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("current")
+        await _rollback_debit("current", npub=npub)
         return {"success": False, "error": str(e)}
 
 
 @tool
 async def forecast(
-    latitude: float, longitude: float, days: int = 7
+    latitude: float, longitude: float, days: int = 7, npub: str = ""
 ) -> dict[str, Any]:
     """Get a multi-day weather forecast for a location.
 
@@ -953,14 +931,14 @@ async def forecast(
         longitude: Longitude (-180 to 180).
         days: Number of forecast days (1-16, default 7).
     """
-    err = await _debit_or_error("forecast")
+    err = await _debit_or_error("forecast", npub=npub)
     if err:
         return err
     try:
         result = await weather.get_forecast(latitude, longitude, days)
-        return await _with_warning(result)
+        return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("forecast")
+        await _rollback_debit("forecast", npub=npub)
         return {"success": False, "error": str(e)}
 
 
@@ -970,6 +948,7 @@ async def historical(
     longitude: float,
     start_date: str,
     end_date: str,
+    npub: str = "",
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
@@ -982,14 +961,14 @@ async def historical(
         start_date: Start date (YYYY-MM-DD).
         end_date: End date (YYYY-MM-DD).
     """
-    err = await _debit_or_error("historical")
+    err = await _debit_or_error("historical", npub=npub)
     if err:
         return err
     try:
         result = await weather.get_historical(latitude, longitude, start_date, end_date)
-        return await _with_warning(result)
+        return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("historical")
+        await _rollback_debit("historical", npub=npub)
         return {"success": False, "error": str(e)}
 
 
@@ -997,7 +976,7 @@ async def historical(
 
 
 @tool
-async def check_price(tool_name: str) -> dict[str, Any]:
+async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
     """Preview the effective cost of a tool call.
 
     Shows the base cost and any constraint effects (discounts, free trials).
@@ -1027,15 +1006,15 @@ async def check_price(tool_name: str) -> dict[str, Any]:
         result["constraints_enabled"] = True
         # Show what constraints would do (without actually debiting)
         try:
-            npub = await _ensure_dpyc_session()
+            resolved = _resolve_npub(npub)
             cache = _get_ledger_cache()
-            ledger = await cache.get(npub)
+            ledger = await cache.get(resolved)
             demand = await _get_global_demand(tool_name)
             denial, effective = gate.check(
                 tool_name=tool_name,
                 base_cost=int(base_cost),
                 ledger=ledger,
-                npub=npub,
+                npub=resolved,
                 global_demand=demand,
             )
             if demand.get(tool_name, 0) > 0:
@@ -1070,14 +1049,14 @@ async def check_balance(npub: str = "") -> dict[str, Any]:
     """
     op = _get_operator()
     try:
-        npub = await _ensure_dpyc_session(npub or None)
+        npub = _resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
     return await op.check_balance(npub)
 
 
 @tool
-async def purchase_credits(amount_sats: int = 1000) -> dict[str, Any]:
+async def purchase_credits(amount_sats: int = 1000, npub: str = "") -> dict[str, Any]:
     """Buy credits via Bitcoin Lightning.
 
     Creates a Lightning invoice. Pay it with any Lightning wallet, then
@@ -1091,7 +1070,7 @@ async def purchase_credits(amount_sats: int = 1000) -> dict[str, Any]:
     """
     op = _get_operator()
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
@@ -1112,7 +1091,7 @@ async def purchase_credits(amount_sats: int = 1000) -> dict[str, Any]:
 
 
 @tool
-async def check_payment(invoice_id: str) -> dict[str, Any]:
+async def check_payment(invoice_id: str, npub: str = "") -> dict[str, Any]:
     """Check the payment status of a Lightning invoice.
 
     Call after paying the invoice from weather_purchase_credits.
@@ -1125,7 +1104,7 @@ async def check_payment(invoice_id: str) -> dict[str, Any]:
     """
     op = _get_operator()
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
     try:
@@ -1169,14 +1148,14 @@ async def get_onboarding_status() -> dict[str, Any]:
 
 
 @tool
-async def session_status() -> dict[str, Any]:
+async def session_status(npub: str = "") -> dict[str, Any]:
     """Check the current session state — shows whether credentials
     are active or onboarding is needed.
 
     Free — no authentication required.
     """
     try:
-        npub = await _ensure_dpyc_session()
+        npub = _resolve_npub(npub)
     except ValueError:
         npub = _get_operator_npub()
     return await _get_operator().session_status(npub)
@@ -1346,18 +1325,12 @@ async def set_pricing_model(model_json: str) -> dict[str, Any]:
     # Verify caller is the operator (skip in STDIO mode)
     user_id = _get_current_user_id()
     if user_id is not None:
-        try:
-            caller_npub = await _ensure_dpyc_session()
-        except ValueError as e:
-            return {"status": "error", "error": str(e)}
-        if caller_npub != operator:
-            # Allow if a valid operator proof was provided
-            if not operator_proof:
-                return {"status": "error", "error": "Only the operator can modify pricing"}
-            from tollbooth.operator_proof import verify_operator_proof
+        if not operator_proof:
+            return {"status": "error", "error": "Only the operator can modify pricing — provide operator_proof."}
+        from tollbooth.operator_proof import verify_operator_proof
 
-            if not verify_operator_proof(operator_proof, operator, "set_pricing_model"):
-                return {"status": "error", "error": "Only the operator can modify pricing"}
+        if not verify_operator_proof(operator_proof, operator, "set_pricing_model"):
+            return {"status": "error", "error": "Only the operator can modify pricing"}
 
     from tollbooth.tools.pricing import set_pricing_model_tool
 
