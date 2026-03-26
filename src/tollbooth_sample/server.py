@@ -394,7 +394,10 @@ _ledger_cache: LedgerCache | None = None
 _btcpay_client: BTCPayClient | None = None
 _gate: ConstraintGate | None = None
 _gate_initialized: bool = False
-_dpyc_sessions: dict[str, str] = {}  # horizon_id → npub
+# npub is the SOLE credit identity. _dpyc_sessions is an optimization
+# cache — remembers which npub the current OAuth user last identified as.
+# Never authoritative; an explicit npub parameter always wins.
+_dpyc_sessions: dict[str, str] = {}  # horizon_id → last-used npub (cache only)
 
 
 def _get_operator() -> SampleOperator:
@@ -729,17 +732,30 @@ async def _call_oracle(
         return {"success": False, "error": f"Oracle delegation failed: {e}"}
 
 
-async def _ensure_dpyc_session() -> str:
-    """Return the patron's npub, raising ValueError if unavailable."""
+async def _ensure_dpyc_session(npub: str | None = None) -> str:
+    """Return the patron's npub for credit operations.
+
+    Args:
+        npub: Explicit npub from the tool call. If provided and valid,
+              used directly (and cached for subsequent calls).
+
+    Falls back to the session cache if no explicit npub.
+    """
+    if npub and npub.startswith("npub1") and len(npub) >= 60:
+        user_id = _get_current_user_id()
+        if user_id:
+            _dpyc_sessions[user_id] = npub
+        return npub
+
     user_id = _get_current_user_id()
     if not user_id:
         raise ValueError("No user identity — running in STDIO mode.")
-    npub = _dpyc_sessions.get(user_id)
-    if npub:
-        return npub
-    # Auto-restore from vault would go here in a production deployment.
+    cached = _dpyc_sessions.get(user_id)
+    if cached:
+        return cached
     raise ValueError(
-        "No DPYC session. Call session_status for onboarding steps."
+        "No DPYC session. Call session_status for onboarding steps, "
+        "or pass your npub explicitly."
     )
 
 
