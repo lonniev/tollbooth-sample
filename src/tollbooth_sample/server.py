@@ -180,7 +180,7 @@ class SampleOperator:
     async def restore_credits(
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
-        btcpay = _get_btcpay()
+        btcpay = await _ensure_btcpay()
         cache = _get_ledger_cache()
         settings = get_settings()
         return await credits.restore_credits_tool(
@@ -200,7 +200,7 @@ class SampleOperator:
             "version": __version__,
             "slug": self.slug,
             "constraints_enabled": gate.enabled if gate else False,
-            "btcpay_configured": settings.btcpay_host is not None,
+            "btcpay_configured": settings.btcpay_host is not None or _btcpay_client is not None,
             "vault_configured": settings.neon_database_url is not None,
             "seed_balance_sats": settings.seed_balance_sats,
             "tool_costs": {k: int(v) for k, v in TOOL_COSTS.items() if v > 0},
@@ -292,7 +292,7 @@ class SampleOperator:
     async def purchase_credits(
         self, npub: str, amount_sats: int, certificate: str
     ) -> dict[str, Any]:
-        btcpay = _get_btcpay()
+        btcpay = await _ensure_btcpay()
         cache = _get_ledger_cache()
         settings = get_settings()
         authority_npub = await _resolve_authority_npub()
@@ -322,7 +322,7 @@ class SampleOperator:
     async def check_payment(
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
-        btcpay = _get_btcpay()
+        btcpay = await _ensure_btcpay()
         cache = _get_ledger_cache()
         settings = get_settings()
         return await credits.check_payment_tool(
@@ -524,20 +524,72 @@ def _get_ledger_cache() -> LedgerCache:
 
 
 def _get_btcpay() -> BTCPayClient:
+    """Synchronous accessor — raises if not yet initialized by async path."""
     global _btcpay_client
     if _btcpay_client is not None:
         return _btcpay_client
-    settings = get_settings()
-    if not all([settings.btcpay_host, settings.btcpay_api_key, settings.btcpay_store_id]):
-        raise ValueError(
-            "BTCPay not configured. Set BTCPAY_HOST, BTCPAY_API_KEY, BTCPAY_STORE_ID."
-        )
-    _btcpay_client = BTCPayClient(
-        host=settings.btcpay_host,
-        api_key=settings.btcpay_api_key,
-        store_id=settings.btcpay_store_id,
+    raise ValueError(
+        "BTCPay not initialized. Call _ensure_btcpay() first, or deliver "
+        "credentials via Secure Courier (request_credential_channel)."
     )
+
+
+async def _ensure_btcpay() -> BTCPayClient:
+    """Load BTCPay config from credential vault (primary) or env vars (legacy).
+
+    The vault is the canonical source — credentials arrive via Secure Courier
+    and are stored encrypted in the NeonCredentialVault.
+    """
+    global _btcpay_client
+    if _btcpay_client is not None:
+        return _btcpay_client
+
+    host = api_key = store_id = None
+
+    # Primary: credential vault
+    creds = await _load_vault_credentials("tollbooth-sample-operator")
+    if creds:
+        host = creds.get("btcpay_host")
+        api_key = creds.get("btcpay_api_key")
+        store_id = creds.get("btcpay_store_id")
+
+    # Legacy fallback: env vars
+    if not all([host, api_key, store_id]):
+        settings = get_settings()
+        host = host or settings.btcpay_host
+        api_key = api_key or settings.btcpay_api_key
+        store_id = store_id or settings.btcpay_store_id
+
+    if not all([host, api_key, store_id]):
+        raise ValueError(
+            "BTCPay not configured. Deliver btcpay_host, btcpay_api_key, "
+            "btcpay_store_id via Secure Courier (request_credential_channel)."
+        )
+
+    _btcpay_client = BTCPayClient(host=host, api_key=api_key, store_id=store_id)
     return _btcpay_client
+
+
+async def _load_vault_credentials(service: str) -> dict | None:
+    """Load credentials from the Secure Courier vault for a given service."""
+    courier = _get_courier_service()
+    if courier is None:
+        return None
+    try:
+        vault = courier._exchange._credential_vault
+        if vault is None:
+            return None
+        npub = _get_operator_npub()
+        blob = await vault.fetch_credentials(service, npub)
+        if blob is None:
+            return None
+        # Decrypt
+        plaintext = courier._exchange._vault_decrypt(blob)
+        import json
+        return json.loads(plaintext)
+    except Exception as exc:
+        logger.debug("Vault credential load failed for %s: %s", service, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1078,7 +1130,29 @@ async def get_onboarding_status() -> dict[str, Any]:
     """
     from tollbooth.tools.onboarding import get_onboarding_status_for
     settings = get_settings()
-    return get_onboarding_status_for(settings)
+    result = get_onboarding_status_for(settings)
+
+    # Check credential vault for secrets that env vars don't have
+    vault_creds = await _load_vault_credentials("tollbooth-sample-operator")
+    if vault_creds:
+        # Move vault-present fields from missing to configured
+        still_missing = []
+        for field in result.get("missing", []):
+            if field["category"] == "secret" and field["field"] in vault_creds:
+                field["status"] = "configured"
+                field["how"] = None
+                result["configured"].append(field)
+            else:
+                still_missing.append(field)
+        result["missing"] = still_missing
+        result["ready"] = len(still_missing) == 0
+        if result["ready"]:
+            result["summary"] = "Operator is fully configured and ready to serve."
+        else:
+            missing_names = [m["field"] for m in still_missing]
+            result["summary"] = f"Not ready. Still missing: {', '.join(missing_names)}."
+
+    return result
 
 
 # ── Secure Courier tools ─────────────────────────────────────────
