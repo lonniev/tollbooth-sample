@@ -47,6 +47,9 @@ from tollbooth_sample import weather
 
 logger = logging.getLogger(__name__)
 
+# Process identity — set once at module load, survives for process lifetime
+_process_boot_time = datetime.now(timezone.utc)
+
 # ---------------------------------------------------------------------------
 # FastMCP app + slug decorator
 # ---------------------------------------------------------------------------
@@ -192,6 +195,7 @@ class SampleOperator:
         )
 
     async def service_status(self) -> dict[str, Any]:
+        import os
         settings = get_settings()
         gate = _get_gate()
         return {
@@ -201,10 +205,15 @@ class SampleOperator:
             "slug": self.slug,
             "constraints_enabled": gate.enabled if gate else False,
             "btcpay_configured": settings.btcpay_host is not None or _btcpay_client is not None,
-            "vault_configured": settings.neon_database_url is not None,
+            "vault_configured": settings.neon_database_url is not None or _bootstrap_vault is not None,
+            "courier_has_vault": _courier_service is not None and hasattr(_courier_service, '_exchange') and _courier_service._exchange._credential_vault is not None,
             "seed_balance_sats": settings.seed_balance_sats,
             "tool_costs": {k: int(v) for k, v in TOOL_COSTS.items() if v > 0},
             "ecosystem_links": ECOSYSTEM_LINKS,
+            # Process identity — for testing Horizon lifecycle
+            "process_id": os.getpid(),
+            "process_boot_secs": int(_process_boot_time.timestamp()) if _process_boot_time else 0,
+            "process_uptime_secs": int((datetime.now(timezone.utc) - _process_boot_time).total_seconds()) if _process_boot_time else 0,
         }
 
     # ── Hot-path (Secure Courier) ─────────────────────────────────
