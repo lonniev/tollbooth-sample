@@ -619,10 +619,23 @@ def _get_courier_service():
     if not live:
         live = relays + _FALLBACK_POOL
 
+    from tollbooth.credential_templates import CredentialTemplate, FieldSpec
+
     _courier_service = SecureCourierService(
         operator_nsec=settings.tollbooth_nostr_operator_nsec,
         relays=live,
-        templates={},  # No credential exchange — weather API needs no patron secrets
+        templates={
+            "tollbooth-sample-operator": CredentialTemplate(
+                service="tollbooth-sample",
+                version=1,
+                description="Operator credentials for BTCPay Lightning payments",
+                fields={
+                    "btcpay_host": FieldSpec(required=True, sensitive=True),
+                    "btcpay_api_key": FieldSpec(required=True, sensitive=True),
+                    "btcpay_store_id": FieldSpec(required=True, sensitive=True),
+                },
+            ),
+        },
     )
     return _courier_service
 
