@@ -56,12 +56,20 @@ mcp = FastMCP(
     instructions=(
         "Weather Stats MCP Service — powered by Open-Meteo and monetized "
         "via Tollbooth DPYC Bitcoin Lightning micropayments.\n\n"
+        "## Onboarding\n"
+        "Call weather_get_onboarding_status to check configuration readiness.\n"
+        "1. Register with an Authority (provides Neon database automatically)\n"
+        "2. Deliver operator secrets via Secure Courier:\n"
+        "   - btcpay_host, btcpay_api_key, btcpay_store_id\n"
+        "   Call weather_request_credential_channel to start.\n"
+        "3. Once configured, the operator serves paid weather queries.\n\n"
+        "## Pricing\n"
         "Paid tools: weather_current (1 sat), weather_forecast (5 sats), "
         "weather_historical (10 sats). Prices are base rates — the "
-        "Constraint Engine may apply discounts (happy hour, loyalty, free "
-        "trial) or surge pricing based on global demand.\n"
+        "Constraint Engine may apply discounts or surge pricing.\n"
         "Free tools: weather_check_balance, weather_purchase_credits, "
-        "weather_check_payment, weather_check_price, weather_service_status."
+        "weather_check_payment, weather_check_price, weather_service_status, "
+        "weather_get_onboarding_status."
     ),
 )
 tool = make_slug_tool(mcp, "weather")
@@ -89,6 +97,7 @@ TOOL_COSTS: dict[str, int] = {
     "get_pricing_model": ToolTier.FREE,
     "set_pricing_model": ToolTier.RESTRICTED,
     "list_constraint_types": ToolTier.FREE,
+    "get_onboarding_status": ToolTier.FREE,
 }
 
 # ---------------------------------------------------------------------------
@@ -1040,6 +1049,23 @@ async def service_status() -> dict[str, Any]:
     Free — no authentication or credits required.
     """
     return await _get_operator().service_status()
+
+
+@tool
+async def get_onboarding_status() -> dict[str, Any]:
+    """Report this operator's configuration readiness.
+
+    Shows which settings are configured, which are missing, and how
+    to deliver each missing value.  Authority-provisioned values
+    (like the Neon database URL) are fetched automatically on
+    registration.  Operator secrets (like BTCPay credentials) must
+    be delivered via Secure Courier encrypted DM.
+
+    Free — no authentication required.
+    """
+    from tollbooth.tools.onboarding import get_onboarding_status_for
+    settings = get_settings()
+    return get_onboarding_status_for(settings)
 
 
 # ── Oracle delegation tools ───────────────────────────────────────
