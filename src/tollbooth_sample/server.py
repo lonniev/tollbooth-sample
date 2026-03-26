@@ -27,17 +27,17 @@ from tollbooth import (
     BTCPayError,
     ConstraintGate,
     ECOSYSTEM_LINKS,
-    LedgerCache,
-    NeonVault,
     ToolTier,
     TollboothConfig,
 )
 from tollbooth.actor_types import ToolPath, ToolPathInfo
+from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.operator_protocol import (
     OPERATOR_BASE_CATALOG,
     OPERATOR_OBSOLETE_PRACTICES,
     OperatorProtocol,
 )
+from tollbooth.runtime import OperatorRuntime, resolve_npub
 from tollbooth.slug_tools import make_slug_tool
 from tollbooth.tools import credits
 
@@ -103,6 +103,27 @@ TOOL_COSTS: dict[str, int] = {
     "get_onboarding_status": ToolTier.FREE,
 }
 
+CREDENTIAL_SERVICE = "tollbooth-sample-operator"
+
+# ---------------------------------------------------------------------------
+# OperatorRuntime — replaces all DPYC boilerplate
+# ---------------------------------------------------------------------------
+
+runtime = OperatorRuntime(
+    tool_costs=TOOL_COSTS,
+    credential_service=CREDENTIAL_SERVICE,
+    credential_template=CredentialTemplate(
+        service="tollbooth-sample",
+        version=1,
+        description="Operator credentials for BTCPay Lightning payments",
+        fields={
+            "btcpay_host": FieldSpec(required=True, sensitive=True),
+            "btcpay_api_key": FieldSpec(required=True, sensitive=True),
+            "btcpay_store_id": FieldSpec(required=True, sensitive=True),
+        },
+    ),
+)
+
 # ---------------------------------------------------------------------------
 # Domain-specific tool catalog entries
 # ---------------------------------------------------------------------------
@@ -161,7 +182,7 @@ class SampleOperator:
     # ── Hot-path (local ledger) ───────────────────────────────────
 
     async def check_balance(self, npub: str) -> dict[str, Any]:
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         settings = get_settings()
         return await credits.check_balance_tool(
             cache,
@@ -170,13 +191,13 @@ class SampleOperator:
         )
 
     async def account_statement(self, npub: str) -> dict[str, Any]:
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         return await credits.account_statement_tool(cache, npub)
 
     async def account_statement_infographic(
         self, npub: str
     ) -> dict[str, Any]:
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         data = await credits.account_statement_tool(cache, npub)
         return {"success": True, "statement": data}
 
@@ -184,7 +205,7 @@ class SampleOperator:
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         settings = get_settings()
         return await credits.restore_credits_tool(
             btcpay,
@@ -198,6 +219,11 @@ class SampleOperator:
         import os
         settings = get_settings()
         gate = _get_gate()
+        courier = None
+        try:
+            courier = await runtime.courier()
+        except Exception:
+            pass
         return {
             "success": True,
             "service": "tollbooth-sample",
@@ -205,8 +231,8 @@ class SampleOperator:
             "slug": self.slug,
             "constraints_enabled": gate.enabled if gate else False,
             "btcpay_configured": settings.btcpay_host is not None or _btcpay_client is not None,
-            "vault_configured": settings.neon_database_url is not None or _bootstrap_vault is not None,
-            "courier_has_vault": _courier_service is not None and hasattr(_courier_service, '_exchange') and _courier_service._exchange._credential_vault is not None,
+            "vault_configured": settings.neon_database_url is not None or runtime._vault is not None,
+            "courier_has_vault": courier is not None and hasattr(courier, '_exchange') and courier._exchange._credential_vault is not None,
             "seed_balance_sats": settings.seed_balance_sats,
             "tool_costs": {k: int(v) for k, v in TOOL_COSTS.items() if v > 0},
             "ecosystem_links": ECOSYSTEM_LINKS,
@@ -241,7 +267,7 @@ class SampleOperator:
     async def request_credential_channel(
         self, service: str, greeting: str, recipient_npub: str | None,
     ) -> dict[str, Any]:
-        courier = await _ensure_courier_service()
+        courier = await runtime.courier()
         if courier is None:
             return {
                 "success": False,
@@ -265,7 +291,7 @@ class SampleOperator:
     async def receive_credentials(
         self, sender_npub: str, service: str, credential_card: str,
     ) -> dict[str, Any]:
-        courier = await _ensure_courier_service()
+        courier = await runtime.courier()
         if courier is None:
             return {
                 "success": False,
@@ -288,7 +314,7 @@ class SampleOperator:
     async def forget_credentials(
         self, sender_npub: str, service: str,
     ) -> dict[str, Any]:
-        courier = await _ensure_courier_service()
+        courier = await runtime.courier()
         if courier is None:
             return {"success": False, "error": "Secure Courier not configured."}
         return await courier.forget(
@@ -301,14 +327,14 @@ class SampleOperator:
         self, npub: str, amount_sats: int, certificate: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         settings = get_settings()
         authority_npub = await _resolve_authority_npub()
 
         # Fire-and-forget invoice DM — courier may not be available
         invoice_dm_cb = None
         try:
-            courier = await _ensure_courier_service()
+            courier = await runtime.courier()
             if courier is not None and courier.enabled:
                 async def _send_invoice_dm(msg: str) -> None:
                     courier.exchange.send_dm(npub, msg)
@@ -331,7 +357,7 @@ class SampleOperator:
         self, npub: str, invoice_id: str
     ) -> dict[str, Any]:
         btcpay = await _ensure_btcpay()
-        cache = await _get_ledger_cache_async()
+        cache = await runtime.ledger_cache()
         settings = get_settings()
         return await credits.check_payment_tool(
             btcpay,
@@ -385,11 +411,10 @@ class SampleOperator:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singletons
+# Module-level singletons (domain-specific only)
 # ---------------------------------------------------------------------------
 
 _operator: SampleOperator | None = None
-_ledger_cache: LedgerCache | None = None
 _btcpay_client: BTCPayClient | None = None
 _gate: ConstraintGate | None = None
 _gate_initialized: bool = False
@@ -413,139 +438,6 @@ def _get_current_user_id() -> str | None:
         return None
 
 
-_cached_operator_npub: str | None = None
-
-
-def _get_operator_npub() -> str:
-    global _cached_operator_npub
-    if _cached_operator_npub is not None:
-        return _cached_operator_npub
-    from pynostr.key import PrivateKey
-
-    settings = get_settings()
-    nsec = settings.tollbooth_nostr_operator_nsec
-    if not nsec:
-        raise RuntimeError(
-            "Operator misconfigured: TOLLBOOTH_NOSTR_OPERATOR_NSEC not set."
-        )
-    pk = PrivateKey.from_nsec(nsec)
-    _cached_operator_npub = pk.public_key.bech32()
-    return _cached_operator_npub
-
-
-_bootstrap_vault: NeonVault | None = None
-
-
-async def _get_commerce_vault_async() -> NeonVault:
-    """Get the NeonVault, bootstrapping from Authority if needed.
-
-    Tries env var first (legacy). If not set, bootstraps from Authority
-    using only the nsec — discovers Neon URL via get_operator_config.
-    """
-    global _bootstrap_vault
-    if _bootstrap_vault is not None:
-        return _bootstrap_vault
-
-    settings = get_settings()
-
-    # Legacy path: NEON_DATABASE_URL in env
-    if settings.neon_database_url:
-        nsec_hex = _get_nsec_hex()
-        vault = NeonVault(
-            database_url=settings.neon_database_url,
-            encryption_nsec_hex=nsec_hex,
-        )
-        await vault.ensure_schema()
-        _bootstrap_vault = vault
-        return vault
-
-    # Bootstrap path: discover Neon URL from Authority
-    from tollbooth.bootstrap import ensure_bootstrapped
-    result = await ensure_bootstrapped()
-    if not result.success or not result.neon_database_url:
-        raise ValueError(
-            f"Bootstrap failed: {result.error or 'no Neon URL'}. "
-            "Operator may not be registered with an Authority."
-        )
-
-    vault = NeonVault(
-        database_url=result.neon_database_url,
-        encryption_nsec_hex=result.encryption_nsec_hex,
-    )
-    await vault.ensure_schema()
-    _bootstrap_vault = vault
-    logger.info("Commerce vault bootstrapped from Authority (encrypted)")
-    return vault
-
-
-def _get_commerce_vault() -> NeonVault:
-    """Sync wrapper — schedules async bootstrap if needed."""
-    if _bootstrap_vault is not None:
-        return _bootstrap_vault
-    settings = get_settings()
-    if settings.neon_database_url:
-        nsec_hex = _get_nsec_hex()
-        vault = NeonVault(
-            database_url=settings.neon_database_url,
-            encryption_nsec_hex=nsec_hex,
-        )
-        asyncio.ensure_future(vault.ensure_schema())
-        return vault
-    raise ValueError(
-        "Commerce vault not yet bootstrapped. First tool call will trigger bootstrap."
-    )
-
-
-def _get_nsec_hex() -> str | None:
-    """Extract nsec hex from env for vault encryption."""
-    settings = get_settings()
-    nsec = settings.tollbooth_nostr_operator_nsec
-    if not nsec:
-        return None
-    if nsec.startswith("nsec1"):
-        from pynostr.key import PrivateKey  # type: ignore[import-untyped]
-        return PrivateKey.from_nsec(nsec).hex()
-    return nsec
-
-
-async def _get_ledger_cache_async() -> LedgerCache:
-    """Get the LedgerCache, bootstrapping if needed."""
-    global _ledger_cache
-    if _ledger_cache is not None:
-        return _ledger_cache
-    vault = await _get_commerce_vault_async()
-    _ledger_cache = LedgerCache(vault)
-    asyncio.ensure_future(_ledger_cache.start_background_flush())
-    return _ledger_cache
-
-
-def _get_ledger_cache() -> LedgerCache:
-    """Sync path — only returns the already-bootstrapped cache.
-
-    Call ``await _get_ledger_cache_async()`` from tool functions
-    to trigger bootstrap on first use.
-    """
-    if _ledger_cache is not None:
-        return _ledger_cache
-    raise ValueError(
-        "Ledger cache not initialized. Use _get_ledger_cache_async()."
-    )
-
-
-def _get_btcpay() -> BTCPayClient:
-    """Synchronous accessor — raises if not yet initialized by async path."""
-    global _btcpay_client
-    if _btcpay_client is not None:
-        return _btcpay_client
-    raise ValueError(
-        "BTCPay not initialized. Call _ensure_btcpay() first, or deliver "
-        "credentials via Secure Courier (request_credential_channel)."
-    )
-
-
-CREDENTIAL_SERVICE = "tollbooth-sample-operator"
-
-
 async def _ensure_btcpay() -> BTCPayClient:
     """Load BTCPay config from credential vault (primary) or env vars (legacy).
 
@@ -556,13 +448,8 @@ async def _ensure_btcpay() -> BTCPayClient:
     if _btcpay_client is not None:
         return _btcpay_client
 
-    from tollbooth.tools.onboarding import load_config_from_vault
-
-    creds = await load_config_from_vault(
-        await _ensure_courier_service(),
-        CREDENTIAL_SERVICE,
-        _get_operator_npub(),
-        ["btcpay_host", "btcpay_api_key", "btcpay_store_id"],
+    creds = await runtime.load_credentials(
+        ["btcpay_host", "btcpay_api_key", "btcpay_store_id"]
     )
 
     host = creds.get("btcpay_host")
@@ -586,20 +473,15 @@ async def _ensure_btcpay() -> BTCPayClient:
 _pricing_store: Any = None
 
 
-def _get_pricing_store() -> Any:
+async def _get_pricing_store() -> Any:
     global _pricing_store
     if _pricing_store is not None:
         return _pricing_store
     from tollbooth.pricing_store import PricingModelStore
 
-    vault = _get_commerce_vault()  # sync — only works if already bootstrapped
+    vault = await runtime.vault()
     _pricing_store = PricingModelStore(neon_vault=vault)
-    import asyncio
-
-    try:
-        asyncio.ensure_future(_pricing_store.ensure_schema())
-    except RuntimeError:
-        pass
+    await _pricing_store.ensure_schema()
     return _pricing_store
 
 
@@ -614,93 +496,6 @@ def _get_gate() -> ConstraintGate | None:
         _gate = ConstraintGate(config)
     _gate_initialized = True
     return _gate
-
-
-_courier_service = None
-
-_DEFAULT_RELAY = "wss://nostr.wine"
-_FALLBACK_POOL = [
-    "wss://relay.primal.net",
-    "wss://relay.damus.io",
-    "wss://nos.lol",
-    "wss://relay.nostr.band",
-]
-
-
-def _get_courier_service():
-    """Sync accessor — returns the cached courier or None.
-
-    The courier must be initialized via ``_ensure_courier_service()``
-    (async) before this returns anything useful.
-    """
-    return _courier_service
-
-
-async def _ensure_courier_service():
-    """Async courier initialization — creates the courier with a
-    persistent NeonCredentialVault backed by the bootstrapped Neon URL.
-
-    On every cold start:
-    1. Bootstrap fetches Neon URL from Authority (cheap MCP call)
-    2. NeonVault + NeonCredentialVault created with that URL
-    3. SecureCourierService created with persistent vault
-    4. Credentials survive across restarts
-    """
-    global _courier_service
-    if _courier_service is not None:
-        return _courier_service
-
-    try:
-        from tollbooth.nostr_diagnostics import probe_relay_liveness
-        from tollbooth.secure_courier import SecureCourierService
-    except ImportError:
-        return None
-
-    settings = get_settings()
-    if not settings.tollbooth_nostr_operator_nsec:
-        return None
-
-    # Resolve relays
-    relays = [_DEFAULT_RELAY]
-    results = probe_relay_liveness(relays, timeout=5)
-    live = [r["relay"] for r in results if r["connected"]]
-    if not live:
-        fallback_results = probe_relay_liveness(_FALLBACK_POOL, timeout=5)
-        live = [r["relay"] for r in fallback_results if r["connected"]]
-    if not live:
-        live = relays + _FALLBACK_POOL
-
-    # Build credential vault from bootstrapped Neon URL
-    credential_vault = None
-    try:
-        commerce_vault = await _get_commerce_vault_async()
-        from tollbooth.vaults.neon import NeonCredentialVault
-        credential_vault = NeonCredentialVault(neon_vault=commerce_vault)
-        await credential_vault.ensure_schema()
-        logger.info("Courier credential vault backed by Neon (persistent)")
-    except Exception as exc:
-        logger.warning("No persistent credential vault: %s (credentials will be in-memory only)", exc)
-
-    from tollbooth.credential_templates import CredentialTemplate, FieldSpec
-
-    _courier_service = SecureCourierService(
-        operator_nsec=settings.tollbooth_nostr_operator_nsec,
-        relays=live,
-        credential_vault=credential_vault,
-        templates={
-            CREDENTIAL_SERVICE: CredentialTemplate(
-                service="tollbooth-sample",
-                version=1,
-                description="Operator credentials for BTCPay Lightning payments",
-                fields={
-                    "btcpay_host": FieldSpec(required=True, sensitive=True),
-                    "btcpay_api_key": FieldSpec(required=True, sensitive=True),
-                    "btcpay_store_id": FieldSpec(required=True, sensitive=True),
-                },
-            ),
-        },
-    )
-    return _courier_service
 
 
 async def _resolve_authority_npub() -> str:
@@ -729,18 +524,8 @@ async def _call_oracle(
         return {"success": False, "error": f"Oracle delegation failed: {e}"}
 
 
-def _resolve_npub(npub: str) -> str:
-    """Validate and return the npub. No fallback, no session cache."""
-    if not npub or not npub.startswith("npub1") or len(npub) < 60:
-        raise ValueError(
-            "npub is required. Pass your Nostr public key (npub1...) "
-            "to identify yourself."
-        )
-    return npub
-
-
 # ---------------------------------------------------------------------------
-# Debit / rollback helpers
+# Demand tracking helpers (domain-specific, uses runtime.vault())
 # ---------------------------------------------------------------------------
 
 
@@ -755,7 +540,7 @@ async def _get_global_demand(tool_name: str) -> dict[str, int]:
     On error or when vault is unconfigured, returns empty dict (base pricing).
     """
     try:
-        vault = _get_commerce_vault()
+        vault = await runtime.vault()
         count = await vault.get_demand(tool_name, _demand_window_key())
         return {tool_name: count}
     except Exception:
@@ -766,7 +551,7 @@ def _fire_and_forget_demand_increment(tool_name: str) -> None:
     """Increment the demand counter for *tool_name* — async, non-blocking."""
     async def _increment() -> None:
         try:
-            vault = _get_commerce_vault()
+            vault = await runtime.vault()
             await vault.increment_demand(tool_name, _demand_window_key())
         except Exception:
             pass  # best-effort; stale counts just mean slightly off pricing
@@ -774,105 +559,9 @@ def _fire_and_forget_demand_increment(tool_name: str) -> None:
     asyncio.create_task(_increment())
 
 
-async def _debit_or_error(tool_name: str, npub: str = "", **kwargs: Any) -> dict[str, Any] | None:
-    """Check balance and debit credits for a paid tool call.
-
-    Returns None on success (proceed with execution).
-    Returns an error dict if insufficient balance or no session.
-    Skips gating entirely in STDIO mode or when vault is unconfigured.
-
-    RESTRICTED tools (cost == ToolTier.RESTRICTED) are operator-only:
-    allowed at cost 0 if the caller's npub matches the operator npub,
-    rejected otherwise.  STDIO mode bypasses the restriction.
-    """
-    cost = TOOL_COSTS.get(tool_name, 0)
-
-    # RESTRICTED tier: operator-only access gate
-    if cost == ToolTier.RESTRICTED:
-        user_id = _get_current_user_id()
-        if not user_id:
-            return None  # STDIO mode — allow
-        try:
-            caller_npub = _resolve_npub(npub)
-        except ValueError as e:
-            return {"success": False, "error": str(e)}
-        if caller_npub != _get_operator_npub():
-            # Allow if caller provides a valid operator proof
-            proof = kwargs.get("operator_proof")
-            if proof:
-                from tollbooth.operator_proof import verify_operator_proof
-
-                if verify_operator_proof(proof, _get_operator_npub(), tool_name):
-                    return None  # proof verified — allow
-            return {
-                "success": False,
-                "error": "This tool is restricted to the operator.",
-            }
-        return None  # operator — allow at cost 0
-
-    if cost == 0:
-        return None
-
-    # STDIO mode — no gating
-    if not _get_current_user_id():
-        return None
-
-    try:
-        npub = _resolve_npub(npub)
-        cache = await _get_ledger_cache_async()
-    except ValueError as e:
-        return {"success": False, "error": str(e)}
-
-    # ConstraintGate may modify the cost or deny the call
-    gate = _get_gate()
-    if gate and gate.enabled:
-        ledger = await cache.get(npub)
-        demand = await _get_global_demand(tool_name)
-        denial, effective_cost = gate.check(
-            tool_name=tool_name,
-            base_cost=cost,
-            ledger=ledger,
-            npub=npub,
-            global_demand=demand,
-        )
-        if denial is not None:
-            return denial
-        cost = effective_cost
-
-    # If constraint reduced cost to zero, skip debit
-    if cost == 0:
-        return None
-
-    if not await cache.debit(npub, tool_name, cost):
-        ledger = await cache.get(npub)
-        return {
-            "success": False,
-            "error": (
-                f"Insufficient balance ({ledger.balance_api_sats} api_sats) "
-                f"for {tool_name} ({cost} api_sats). "
-                f"Use weather_purchase_credits to add funds."
-            ),
-        }
-
-    # Successful debit — increment global demand counter (fire-and-forget)
-    _fire_and_forget_demand_increment(tool_name)
-
-    return None
-
-
-async def _rollback_debit(tool_name: str, npub: str = "") -> None:
-    """Undo a debit if the downstream API call fails."""
-    cost = TOOL_COSTS.get(tool_name, 0)
-    if cost <= 0 or not _get_current_user_id():
-        return
-    try:
-        npub = _resolve_npub(npub)
-        cache = await _get_ledger_cache_async()
-        ledger = await cache.get(npub)
-        ledger.rollback_debit(tool_name, cost)
-        cache.mark_dirty(npub)
-    except Exception:
-        logger.exception("Rollback failed for %s", tool_name)
+# ---------------------------------------------------------------------------
+# Low-balance warning helper
+# ---------------------------------------------------------------------------
 
 
 async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any]:
@@ -880,8 +569,8 @@ async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any
     if not _get_current_user_id():
         return result
     try:
-        npub = _resolve_npub(npub)
-        cache = await _get_ledger_cache_async()
+        npub = resolve_npub(npub)
+        cache = await runtime.ledger_cache()
         warning = credits.compute_low_balance_warning(await cache.get(npub))
         if warning:
             result["low_balance_warning"] = warning
@@ -908,14 +597,14 @@ async def current(latitude: float, longitude: float, npub: str = "") -> dict[str
         latitude: Latitude (-90 to 90).
         longitude: Longitude (-180 to 180).
     """
-    err = await _debit_or_error("current", npub=npub)
+    err = await runtime.debit_or_error("current", npub)
     if err:
         return err
     try:
         result = await weather.get_current(latitude, longitude)
         return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("current", npub=npub)
+        await runtime.rollback_debit("current", npub)
         return {"success": False, "error": str(e)}
 
 
@@ -933,14 +622,14 @@ async def forecast(
         longitude: Longitude (-180 to 180).
         days: Number of forecast days (1-16, default 7).
     """
-    err = await _debit_or_error("forecast", npub=npub)
+    err = await runtime.debit_or_error("forecast", npub)
     if err:
         return err
     try:
         result = await weather.get_forecast(latitude, longitude, days)
         return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("forecast", npub=npub)
+        await runtime.rollback_debit("forecast", npub)
         return {"success": False, "error": str(e)}
 
 
@@ -963,14 +652,14 @@ async def historical(
         start_date: Start date (YYYY-MM-DD).
         end_date: End date (YYYY-MM-DD).
     """
-    err = await _debit_or_error("historical", npub=npub)
+    err = await runtime.debit_or_error("historical", npub)
     if err:
         return err
     try:
         result = await weather.get_historical(latitude, longitude, start_date, end_date)
         return await _with_warning(result, npub=npub)
     except Exception as e:
-        await _rollback_debit("historical", npub=npub)
+        await runtime.rollback_debit("historical", npub)
         return {"success": False, "error": str(e)}
 
 
@@ -1008,8 +697,8 @@ async def check_price(tool_name: str, npub: str = "") -> dict[str, Any]:
         result["constraints_enabled"] = True
         # Show what constraints would do (without actually debiting)
         try:
-            resolved = _resolve_npub(npub)
-            cache = await _get_ledger_cache_async()
+            resolved = resolve_npub(npub)
+            cache = await runtime.ledger_cache()
             ledger = await cache.get(resolved)
             demand = await _get_global_demand(tool_name)
             denial, effective = gate.check(
@@ -1050,7 +739,7 @@ async def check_balance(npub: str = "") -> dict[str, Any]:
     Free — no credits required. Pass your npub to identify yourself.
     """
     try:
-        npub = _resolve_npub(npub)
+        npub = resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
     return await _get_operator().check_balance(npub)
@@ -1071,7 +760,7 @@ async def purchase_credits(amount_sats: int = 1000, npub: str = "") -> dict[str,
     """
     op = _get_operator()
     try:
-        npub = _resolve_npub(npub)
+        npub = resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
@@ -1105,7 +794,7 @@ async def check_payment(invoice_id: str, npub: str = "") -> dict[str, Any]:
     """
     op = _get_operator()
     try:
-        npub = _resolve_npub(npub)
+        npub = resolve_npub(npub)
     except ValueError as e:
         return {"success": False, "error": str(e)}
     try:
@@ -1135,14 +824,7 @@ async def get_onboarding_status() -> dict[str, Any]:
 
     Free — no authentication required.
     """
-    from tollbooth.tools.onboarding import get_onboarding_status_with_vault
-
-    return await get_onboarding_status_with_vault(
-        settings=get_settings(),
-        courier_service=await _ensure_courier_service(),
-        service=CREDENTIAL_SERVICE,
-        operator_npub=_get_operator_npub(),
-    )
+    return await runtime.onboarding_status(get_settings())
 
 
 # ── Secure Courier tools ─────────────────────────────────────────
@@ -1155,11 +837,7 @@ async def session_status(npub: str = "") -> dict[str, Any]:
 
     Free — no authentication required.
     """
-    try:
-        npub = _resolve_npub(npub)
-    except ValueError:
-        npub = _get_operator_npub()
-    return await _get_operator().session_status(npub)
+    return await _get_operator().session_status()
 
 
 @tool
@@ -1176,7 +854,7 @@ async def request_credential_channel(
     Free — no credits required.
     """
     if not sender_npub:
-        sender_npub = _get_operator_npub()
+        sender_npub = runtime.operator_npub()
     return await _get_operator().request_credential_channel(
         service=service,
         greeting="",
@@ -1199,7 +877,7 @@ async def receive_credentials(
     Free — no credits required.
     """
     if not sender_npub:
-        sender_npub = _get_operator_npub()
+        sender_npub = runtime.operator_npub()
     return await _get_operator().receive_credentials(
         sender_npub=sender_npub,
         service=service,
@@ -1217,7 +895,7 @@ async def forget_credentials(
 
     Free — no credits required.
     """
-    npub = _get_operator_npub()
+    npub = runtime.operator_npub()
     return await _get_operator().forget_credentials(npub, service)
 
 
@@ -1282,8 +960,8 @@ async def network_advisory() -> dict[str, Any]:
 async def get_pricing_model() -> dict[str, Any]:
     """Get the active pricing model for this operator. Free."""
     try:
-        store = _get_pricing_store()
-        operator = _get_operator_npub()
+        store = await _get_pricing_store()
+        operator = runtime.operator_npub()
     except (ValueError, RuntimeError) as e:
         return {"status": "error", "error": str(e)}
     from tollbooth.tools.pricing import get_pricing_model_tool
@@ -1314,12 +992,12 @@ async def set_pricing_model(model_json: str) -> dict[str, Any]:
     except (ValueError, TypeError):
         pass
 
-    err = await _debit_or_error("set_pricing_model", operator_proof=operator_proof)
+    err = await runtime.debit_or_error("set_pricing_model", "", operator_proof=operator_proof)
     if err:
         return err
     try:
-        store = _get_pricing_store()
-        operator = _get_operator_npub()
+        store = await _get_pricing_store()
+        operator = runtime.operator_npub()
     except (ValueError, RuntimeError) as e:
         return {"status": "error", "error": str(e)}
 
