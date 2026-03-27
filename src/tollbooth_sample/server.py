@@ -103,6 +103,7 @@ runtime = OperatorRuntime(
         "Hi — I'm Tollbooth Sample, an educational weather stats "
         "MCP service. You (or your AI agent) requested a credential channel."
     ),
+    service_name="Tollbooth Sample",
 )
 
 # ---------------------------------------------------------------------------
