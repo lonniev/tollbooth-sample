@@ -80,18 +80,15 @@ TOOL_COSTS: dict[str, int] = {
     "list_constraint_types": ToolTier.FREE,
 }
 
-CREDENTIAL_SERVICE = "tollbooth-sample-operator"
-
 # ---------------------------------------------------------------------------
 # OperatorRuntime — replaces all DPYC boilerplate
 # ---------------------------------------------------------------------------
 
 runtime = OperatorRuntime(
     tool_costs=TOOL_COSTS,
-    credential_service=CREDENTIAL_SERVICE,
-    credential_template=CredentialTemplate(
-        service=CREDENTIAL_SERVICE,
-        version=1,
+    operator_credential_template=CredentialTemplate(
+        service="tollbooth-sample-operator",
+        version=2,
         description="Operator credentials for BTCPay Lightning payments",
         fields={
             "btcpay_host": FieldSpec(
@@ -108,7 +105,7 @@ runtime = OperatorRuntime(
             ),
         },
     ),
-    credential_greeting=(
+    operator_credential_greeting=(
         "Hi — I'm Tollbooth Sample, an educational weather stats "
         "MCP service. You (or your AI agent) requested a credential channel."
     ),
@@ -116,14 +113,13 @@ runtime = OperatorRuntime(
 )
 
 # ---------------------------------------------------------------------------
-# Register all 20 standard DPYC tools from the wheel
+# Register all standard DPYC tools from the wheel
 # ---------------------------------------------------------------------------
 
 register_standard_tools(
     mcp,
     "weather",
     runtime,
-    settings_fn=get_settings,
     service_name="tollbooth-sample",
     service_version=__version__,
 )
@@ -178,8 +174,12 @@ def _get_gate() -> ConstraintGate | None:
     if _gate_initialized:
         return _gate
     settings = get_settings()
-    config = settings.to_tollbooth_config()
-    if config.constraints_enabled:
+    if settings.constraints_enabled:
+        from tollbooth.config import TollboothConfig
+        config = TollboothConfig(
+            constraints_enabled=settings.constraints_enabled,
+            constraints_config=settings.constraints_config,
+        )
         _gate = ConstraintGate(config)
     _gate_initialized = True
     return _gate
@@ -226,7 +226,10 @@ async def _with_warning(result: dict[str, Any], npub: str = "") -> dict[str, Any
     try:
         npub = resolve_npub(npub)
         cache = await runtime.ledger_cache()
-        warning = credits.compute_low_balance_warning(await cache.get(npub))
+        settings = get_settings()
+        warning = credits.compute_low_balance_warning(
+            await cache.get(npub), settings.seed_balance_sats,
+        )
         if warning:
             result["low_balance_warning"] = warning
     except Exception:
