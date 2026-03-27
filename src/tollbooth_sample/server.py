@@ -101,6 +101,10 @@ runtime = OperatorRuntime(
             "btcpay_store_id": FieldSpec(required=True, sensitive=True),
         },
     ),
+    credential_greeting=(
+        "Hi — I'm Tollbooth Sample, an educational weather stats "
+        "MCP service. You (or your AI agent) requested a credential channel."
+    ),
 )
 
 # ---------------------------------------------------------------------------
