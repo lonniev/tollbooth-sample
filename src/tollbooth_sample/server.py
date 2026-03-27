@@ -94,9 +94,18 @@ runtime = OperatorRuntime(
         version=1,
         description="Operator credentials for BTCPay Lightning payments",
         fields={
-            "btcpay_host": FieldSpec(required=True, sensitive=True),
-            "btcpay_api_key": FieldSpec(required=True, sensitive=True),
-            "btcpay_store_id": FieldSpec(required=True, sensitive=True),
+            "btcpay_host": FieldSpec(
+                required=True, sensitive=True,
+                description="The URL of your BTCPay Server instance (e.g. https://btcpay.example.com).",
+            ),
+            "btcpay_api_key": FieldSpec(
+                required=True, sensitive=True,
+                description="Your BTCPay Server API key. Generate one in BTCPay under Account > Manage Account > API Keys.",
+            ),
+            "btcpay_store_id": FieldSpec(
+                required=True, sensitive=True,
+                description="Your BTCPay Store ID. Find it in BTCPay under Stores > Settings > General.",
+            ),
         },
     ),
     credential_greeting=(
