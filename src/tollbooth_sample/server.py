@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -26,7 +25,6 @@ from fastmcp import FastMCP
 from tollbooth import (
     BTCPayClient,
     ConstraintGate,
-    ECOSYSTEM_LINKS,
     ToolTier,
 )
 from tollbooth.runtime import OperatorRuntime, register_standard_tools, resolve_npub
@@ -35,7 +33,7 @@ from tollbooth.slug_tools import make_slug_tool
 from tollbooth.tools import credits
 
 from tollbooth_sample import __version__
-from tollbooth_sample.config import Settings, get_settings
+from tollbooth_sample.config import get_settings
 from tollbooth_sample import weather
 
 logger = logging.getLogger(__name__)
