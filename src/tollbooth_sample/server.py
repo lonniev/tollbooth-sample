@@ -16,7 +16,9 @@ Deploy on FastMCP Cloud:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from fastmcp import FastMCP
 
@@ -26,7 +28,7 @@ from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.slug_tools import make_slug_tool
 
 from tollbooth_sample import __version__
-from tollbooth_sample.config import get_settings
+
 from tollbooth_sample import weather
 
 logger = logging.getLogger(__name__)
@@ -128,8 +130,9 @@ register_standard_tools(
 
 
 @tool
+@runtime.paid_tool("current")
 async def current(
-    latitude: float, longitude: float, npub: str = "",
+    latitude: float, longitude: float, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -140,23 +143,13 @@ async def current(
         latitude: Latitude (-90 to 90).
         longitude: Longitude (-180 to 180).
     """
-    err = await runtime.debit_or_error("current", npub)
-    if err:
-        return err
-    try:
-        result = await weather.get_current(latitude, longitude)
-        runtime.fire_and_forget_demand_increment("current")
-        return await runtime.inject_low_balance_warning(
-            result, npub, get_settings().seed_balance_sats,
-        )
-    except Exception as e:
-        await runtime.rollback_debit("current", npub)
-        return {"success": False, "error": str(e)}
+    return await weather.get_current(latitude, longitude)
 
 
 @tool
+@runtime.paid_tool("forecast")
 async def forecast(
-    latitude: float, longitude: float, days: int = 7, npub: str = "",
+    latitude: float, longitude: float, days: int = 7, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "",
 ) -> dict[str, Any]:
     """Get a multi-day weather forecast for a location.
 
@@ -168,27 +161,17 @@ async def forecast(
         longitude: Longitude (-180 to 180).
         days: Number of forecast days (1-16, default 7).
     """
-    err = await runtime.debit_or_error("forecast", npub)
-    if err:
-        return err
-    try:
-        result = await weather.get_forecast(latitude, longitude, days)
-        runtime.fire_and_forget_demand_increment("forecast")
-        return await runtime.inject_low_balance_warning(
-            result, npub, get_settings().seed_balance_sats,
-        )
-    except Exception as e:
-        await runtime.rollback_debit("forecast", npub)
-        return {"success": False, "error": str(e)}
+    return await weather.get_forecast(latitude, longitude, days)
 
 
 @tool
+@runtime.paid_tool("historical")
 async def historical(
     latitude: float,
     longitude: float,
     start_date: str,
     end_date: str,
-    npub: str = "",
+    npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "",
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
@@ -201,20 +184,9 @@ async def historical(
         start_date: Start date (YYYY-MM-DD).
         end_date: End date (YYYY-MM-DD).
     """
-    err = await runtime.debit_or_error("historical", npub)
-    if err:
-        return err
-    try:
-        result = await weather.get_historical(
-            latitude, longitude, start_date, end_date,
-        )
-        runtime.fire_and_forget_demand_increment("historical")
-        return await runtime.inject_low_balance_warning(
-            result, npub, get_settings().seed_balance_sats,
-        )
-    except Exception as e:
-        await runtime.rollback_debit("historical", npub)
-        return {"success": False, "error": str(e)}
+    return await weather.get_historical(
+        latitude, longitude, start_date, end_date,
+    )
 
 
 # ---------------------------------------------------------------------------
