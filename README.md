@@ -1,12 +1,13 @@
 # tollbooth-sample
 
-Educational Weather Stats MCP Service — a working template for building
+Educational Weather Stats MCP Service — the reference implementation for building
 Tollbooth DPYC monetized API services with Bitcoin Lightning micropayments.
 
 This service wraps the free [Open-Meteo](https://open-meteo.com) weather API
 and gates paid tool calls through the [Tollbooth](https://github.com/lonniev/tollbooth-dpyc)
-credit system. It demonstrates debit/rollback economics, OperatorProtocol
-conformance, and optional ConstraintGate dynamic pricing.
+credit system using the `@runtime.paid_tool()` decorator. Domain tools contain
+only business logic; debit, rollback, balance warnings, and constraint evaluation
+are handled automatically by the `OperatorRuntime`.
 
 ## The DPYC Economy
 
@@ -45,58 +46,95 @@ subscription nag screens, and KYC friction.
 
 ## How Tollbooth Monetization Works
 
-### The debit/rollback pattern
+### The `@runtime.paid_tool()` decorator
 
-Every paid tool follows this pattern:
+Every paid tool is a single decorator away from full DPYC monetization.
+The `@runtime.paid_tool()` decorator handles debit, balance checks,
+constraint evaluation, rollback on failure, and low-balance warnings
+automatically. Your tool function contains only domain logic:
 
 ```python
-@tool
-async def current(latitude: float, longitude: float) -> dict:
-    # 1. Debit credits (checks balance, applies constraints)
-    err = await _debit_or_error("current")
-    if err:
-        return err
+from typing import Annotated, Any
+from pydantic import Field
+from tollbooth import ToolTier
+from tollbooth.runtime import OperatorRuntime
 
-    # 2. Call the real API
-    try:
-        result = await weather.get_current(latitude, longitude)
-        return await _with_warning(result)
-    except Exception as e:
-        # 3. Rollback on failure — user doesn't pay for broken calls
-        await _rollback_debit("current")
-        return {"success": False, "error": str(e)}
+# 1. Declare costs per tool name
+TOOL_COSTS = {
+    "current":    ToolTier.READ,    # 1 sat
+    "forecast":   ToolTier.WRITE,   # 5 sats
+    "historical": ToolTier.HEAVY,   # 10 sats
+}
+
+# 2. Create the runtime (once, at module level)
+runtime = OperatorRuntime(tool_costs=TOOL_COSTS, ...)
+
+# 3. Decorate each paid tool — that's it
+@tool
+@runtime.paid_tool("current")
+async def current(
+    latitude: float,
+    longitude: float,
+    npub: Annotated[str, Field(
+        description="Required. Your Nostr public key (npub1...) for credit billing."
+    )] = "",
+) -> dict[str, Any]:
+    """Get current weather conditions for a location.
+
+    Cost: 1 api_sat (READ tier).
+    """
+    return await weather.get_current(latitude, longitude)
 ```
 
-### The `_debit_or_error` flow
+That is the complete paid tool. No manual debit calls, no try/except
+rollback blocks, no balance-warning plumbing. The decorator:
+
+- Looks up the cost from `TOOL_COSTS` by the slug you pass (`"current"`)
+- Extracts `npub` from the function arguments for billing
+- Debits before calling your function (respecting ConstraintGate discounts)
+- Rolls back automatically if your function raises an exception
+- Appends a low-balance warning to the response when funds are running low
+- Skips all gating in STDIO mode so local development works without credits
+
+### The `npub` parameter convention
+
+Every paid tool must accept an `npub` keyword argument so the runtime
+knows which patron to bill. Use `Annotated` with a `Field` description
+so that LLM callers understand the parameter:
+
+```python
+npub: Annotated[str, Field(
+    description="Required. Your Nostr public key (npub1...) for credit billing."
+)] = ""
+```
+
+The default of `""` keeps the parameter optional in STDIO/dev mode.
+
+### What the runtime handles under the hood
 
 ```
 Tool call arrives
     │
     ▼
-Cost = 0? ──yes──► Proceed (free tool)
+@runtime.paid_tool("current")
     │
-    no
+    ├── Cost lookup from TOOL_COSTS
+    ├── npub extraction from kwargs
+    ├── STDIO mode? ──yes──► Skip gating, call function directly
     │
-    ▼
-STDIO mode? ──yes──► Proceed (local dev, no gating)
+    ├── ConstraintGate evaluation (discounts, surge, supply caps)
+    ├── Balance check + debit
+    │       │
+    │       insufficient ──► Return error (no function call)
     │
-    no
+    ├── Call your function
+    │       │
+    │       exception ──► Automatic rollback, return error
     │
-    ▼
-ConstraintGate active? ──yes──► Evaluate constraints
-    │                              │
-    no                        May discount, deny, or pass through
-    │                              │
-    ▼                              ▼
-Debit from ledger ◄────── Effective cost
-    │
-    ▼
-Balance sufficient? ──no──► Return error
-    │
-    yes
+    └── Append low-balance warning if needed
     │
     ▼
-Proceed with tool execution
+Return result to caller
 ```
 
 ## Constraint Engine
