@@ -43,7 +43,7 @@ mcp = FastMCP(
         "Weather Stats MCP Service — powered by Open-Meteo and monetized "
         "via Tollbooth DPYC Bitcoin Lightning micropayments.\n\n"
         "## Onboarding\n"
-        "Call weather_get_onboarding_status to check configuration readiness.\n"
+        "Call weather_get_operator_onboarding_status to check configuration readiness.\n"
         "1. Register with an Authority (provides Neon database automatically)\n"
         "2. Deliver operator secrets via Secure Courier:\n"
         "   - btcpay_host, btcpay_api_key, btcpay_store_id\n"
@@ -55,7 +55,7 @@ mcp = FastMCP(
         "Constraint Engine may apply discounts or surge pricing.\n"
         "Free tools: weather_check_balance, weather_purchase_credits, "
         "weather_check_payment, weather_check_price, weather_service_status, "
-        "weather_get_onboarding_status."
+        "weather_get_operator_onboarding_status."
     ),
 )
 tool = make_slug_tool(mcp, "weather")
