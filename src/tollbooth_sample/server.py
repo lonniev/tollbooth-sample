@@ -22,7 +22,7 @@ from pydantic import Field
 
 from fastmcp import FastMCP
 
-from tollbooth import ToolTier
+from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.slug_tools import make_slug_tool
@@ -61,13 +61,25 @@ mcp = FastMCP(
 tool = make_slug_tool(mcp, "weather")
 
 # ---------------------------------------------------------------------------
-# Tool cost map (domain tools only — standard tool costs are in the runtime)
+# Tool registry (domain tools only — standard identities are in the wheel)
 # ---------------------------------------------------------------------------
 
-TOOL_COSTS: dict[str, int] = {
-    "current": ToolTier.READ,
-    "forecast": ToolTier.WRITE,
-    "historical": ToolTier.HEAVY,
+TOOL_REGISTRY: dict[str, ToolIdentity] = {
+    "current": ToolIdentity(
+        capability="get_current_weather",
+        category="read",
+        intent="Get current weather conditions",
+    ),
+    "forecast": ToolIdentity(
+        capability="get_weather_forecast",
+        category="write",
+        intent="Get weather forecast",
+    ),
+    "historical": ToolIdentity(
+        capability="get_historical_weather",
+        category="heavy",
+        intent="Get historical weather data",
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -75,7 +87,7 @@ TOOL_COSTS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 runtime = OperatorRuntime(
-    tool_costs=TOOL_COSTS,
+    tool_registry={**STANDARD_IDENTITIES, **TOOL_REGISTRY},
     operator_credential_template=CredentialTemplate(
         service="tollbooth-sample-operator",
         version=2,
