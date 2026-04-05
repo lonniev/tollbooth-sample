@@ -50,12 +50,10 @@ mcp = FastMCP(
         "   Call weather_request_credential_channel to start.\n"
         "3. Once configured, the operator serves paid weather queries.\n\n"
         "## Pricing\n"
-        "Paid tools: weather_current (1 sat), weather_forecast (5 sats), "
-        "weather_historical (10 sats). Prices are base rates — the "
-        "Constraint Engine may apply discounts or surge pricing.\n"
-        "Free tools: weather_check_balance, weather_purchase_credits, "
-        "weather_check_payment, weather_check_price, weather_service_status, "
-        "weather_get_operator_onboarding_status."
+        "Tool prices are set dynamically by the operator's pricing model. "
+        "Use `weather_check_price` to preview costs and `weather_check_balance` "
+        "to see your balance. The Constraint Engine may apply discounts or "
+        "surge pricing."
     ),
 )
 tool = make_slug_tool(mcp, "weather")
@@ -149,7 +147,6 @@ async def current(
     """Get current weather conditions for a location.
 
     Returns temperature, wind speed, and weather code from Open-Meteo.
-    Cost: 1 api_sat (READ tier).
 
     Args:
         latitude: Latitude (-90 to 90).
@@ -166,7 +163,6 @@ async def forecast(
     """Get a multi-day weather forecast for a location.
 
     Returns daily high/low temperatures and precipitation for 1-16 days.
-    Cost: 5 api_sats (WRITE tier).
 
     Args:
         latitude: Latitude (-90 to 90).
@@ -188,7 +184,6 @@ async def historical(
     """Get historical weather data for a location and date range.
 
     Returns daily temperature and precipitation from the Open-Meteo archive.
-    Cost: 10 api_sats (HEAVY tier).
 
     Args:
         latitude: Latitude (-90 to 90).
