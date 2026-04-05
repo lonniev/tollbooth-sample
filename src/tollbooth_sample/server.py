@@ -22,7 +22,7 @@ from pydantic import Field
 
 from fastmcp import FastMCP
 
-from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
+from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES, capability_uuid
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.slug_tools import make_slug_tool
@@ -62,23 +62,25 @@ tool = make_slug_tool(mcp, "weather")
 # Tool registry (domain tools only — standard identities are in the wheel)
 # ---------------------------------------------------------------------------
 
-TOOL_REGISTRY: dict[str, ToolIdentity] = {
-    "current": ToolIdentity(
+_DOMAIN_TOOLS = [
+    ToolIdentity(
         capability="get_current_weather",
         category="read",
         intent="Get current weather conditions",
     ),
-    "forecast": ToolIdentity(
+    ToolIdentity(
         capability="get_weather_forecast",
         category="write",
         intent="Get weather forecast",
     ),
-    "historical": ToolIdentity(
+    ToolIdentity(
         capability="get_historical_weather",
         category="heavy",
         intent="Get historical weather data",
     ),
-}
+]
+
+TOOL_REGISTRY: dict[str, ToolIdentity] = {ti.tool_id: ti for ti in _DOMAIN_TOOLS}
 
 # ---------------------------------------------------------------------------
 # OperatorRuntime — replaces all DPYC boilerplate
@@ -140,7 +142,7 @@ register_standard_tools(
 
 
 @tool
-@runtime.paid_tool("current")
+@runtime.paid_tool(capability_uuid("get_current_weather"))
 async def current(
     latitude: float, longitude: float, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "",
 ) -> dict[str, Any]:
@@ -156,7 +158,7 @@ async def current(
 
 
 @tool
-@runtime.paid_tool("forecast")
+@runtime.paid_tool(capability_uuid("get_weather_forecast"))
 async def forecast(
     latitude: float, longitude: float, days: int = 7, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "",
 ) -> dict[str, Any]:
@@ -173,7 +175,7 @@ async def forecast(
 
 
 @tool
-@runtime.paid_tool("historical")
+@runtime.paid_tool(capability_uuid("get_historical_weather"))
 async def historical(
     latitude: float,
     longitude: float,
