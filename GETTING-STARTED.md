@@ -89,25 +89,35 @@ this registry entry automatically -- no hardcoded Authority URL needed.
 
 ## 4. Configure environment variables
 
-Set these env vars for your deployment:
+The deploy-time secret contract is **one env var**:
 
 | Variable | Required | Description |
 |---|---|---|
-| `NEON_DATABASE_URL` | Yes | Postgres connection string for credit ledgers — provided by your Authority (per-operator schema with its own LOGIN role) |
-| `BTCPAY_HOST` | Yes | BTCPay Server hostname (e.g. `btcpay.example.com`) |
-| `BTCPAY_API_KEY` | Yes | Scoped API key for your BTCPay store |
-| `BTCPAY_STORE_ID` | Yes | Your BTCPay store ID |
-| `TOLLBOOTH_NOSTR_OPERATOR_NSEC` | Yes | Your Nostr secret key (enables Secure Courier + identity) |
-| `SEED_BALANCE_SATS` | No | Free credits for new users (default: 25) |
-| `CREDIT_TTL_SECONDS` | No | Credit expiry in seconds (default: 604800 = 7 days) |
-| `CONSTRAINTS_ENABLED` | No | Enable the Constraint Engine (`true`/`false`) |
-| `CONSTRAINTS_CONFIG` | No | JSON constraint configuration |
+| `TOLLBOOTH_NOSTR_OPERATOR_NSEC` | Yes | Your Nostr secret key — bootstraps your identity, signs Secure Courier DMs, and derives the AES-256-GCM key that encrypts your vault at rest. This is the **only** secret that lives in env. |
 
-> **No Authority URL env var.** Your Authority's service URL is resolved
-> from the dpyc-community registry at runtime, based on the
-> `upstream_authority_npub` in your registry entry. This means you can
-> switch Authorities by updating the registry -- no env var changes or
-> restarts needed.
+Optional knobs (also env-driven):
+
+| Variable | Description |
+|---|---|
+| `TOLLBOOTH_NOSTR_RELAYS` | Comma-separated relay set for Secure Courier DMs. Defaults to a sensible set if omitted. |
+| `SEED_BALANCE_SATS` | Free credits for new users (default: 25) |
+| `CREDIT_TTL_SECONDS` | Credit expiry in seconds (default: 604800 = 7 days) |
+| `CONSTRAINTS_ENABLED` | Enable the Constraint Engine (`true`/`false`) |
+| `CONSTRAINTS_CONFIG` | JSON constraint configuration |
+
+> **Everything else arrives via Secure Courier.** Your `NEON_DATABASE_URL`,
+> `BTCPAY_HOST`, `BTCPAY_API_KEY`, and `BTCPAY_STORE_ID` are NOT env
+> vars on your operator MCP. After deploy, your Authority delivers them
+> as an encrypted Nostr DM to your operator npub. Your MCP receives the
+> DM via the wheel's `receive_credentials` tool and stores the values
+> in its vault, encrypted at rest with the key derived from your nsec.
+> Rotating BTCPay credentials later? Same flow — no env var change, no
+> redeploy.
+
+> **No Authority URL env var either.** Your Authority's service URL is
+> resolved from the dpyc-community registry at runtime, based on the
+> `upstream_authority_npub` in your registry entry. Switch Authorities
+> by updating the registry — no env var changes or restarts.
 
 ## 5. Install and wire up tollbooth-dpyc
 
@@ -171,10 +181,41 @@ python -m my_service.server
 Or via Docker, systemd, etc. Ensure the env vars are set in your
 runtime environment.
 
-## 7. Register your first patron
+## 7. Receive your operator credentials via Secure Courier
 
-Once deployed, your patrons onboard via Secure Courier (Nostr DM
-credential exchange). The flow:
+With your MCP up but vault still empty, your sponsor Authority delivers
+your `BTCPAY_*` credentials and your `NEON_DATABASE_URL` as an
+encrypted Nostr DM addressed to your operator npub. You — the human —
+drive the intake from any MCP client (Pricing Studio, Claude Desktop,
+Claude Code, etc.):
+
+1. Call `request_credential_channel(npub=<your_operator_npub>)` on the
+   Authority's MCP. This signals the Authority to mint and send the DM.
+2. Wait for the Authority's DM to land on your relay set.
+3. Call `receive_credentials(npub=<your_operator_npub>)` on **your own**
+   MCP (the operator service you just deployed). The wheel polls the
+   relays, finds the Authority-signed DM, validates the signature,
+   decrypts, and stores each field in your vault encrypted with the
+   AES-256-GCM key derived from your nsec.
+
+After this round trip your operator MCP has the BTCPay credentials it
+needs to mint Lightning invoices and the Neon URL it needs to persist
+patron ledgers — all without touching env vars or redeploying.
+
+Rotating credentials later (new BTCPay store, Authority change) follows
+the exact same flow.
+
+> **Why courier and not env?** Env vars are visible to the deployment
+> platform, leak into shell history and process listings, and require
+> a redeploy to rotate. Secure Courier sends credentials only to the
+> nsec that can decrypt them, stores them encrypted at rest, and
+> rotates without redeploy. The cost is one extra MCP round-trip; the
+> reward is no plaintext credentials anywhere outside your vault.
+
+## 8. Register your first patron
+
+Once deployed and onboarded, your patrons use the same Secure Courier
+mechanism — now with you on the receiving end. The flow:
 
 1. Patron generates a Nostr keypair
 2. Patron (or their AI agent) calls `my_service_session_status` to check state
