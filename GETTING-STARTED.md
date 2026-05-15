@@ -7,10 +7,10 @@ monetize an MCP service using the DPYC Tollbooth protocol.
 
 | Prerequisite | Why | How to get one |
 |---|---|---|
-| **Nostr keypair** | Your Honor Chain identity (`npub`/`nsec`) | `nak key generate` or any Nostr client (Damus, Amethyst, etc.) |
+| **Nostr keypair** | Your secure DPYC identity (`npub`/`nsec`) | `nak key generate` or any Nostr client (Damus, Amethyst, etc.) |
 | **Lightning wallet** | Receive sats from your patrons | Alby, Zeus, Phoenix, or any BOLT11-capable wallet |
 | **BTCPay credentials** | Create Lightning invoices for credit purchases | Self-hosted or provisioned by your sponsor Authority |
-| **Neon Postgres database** | Persistent credit ledgers | Free tier at [neon.tech](https://neon.tech) |
+| **Neon Postgres database** | Persistent credit ledgers | Provisioned by your sponsor Authority — a per-operator schema with its own LOGIN role |
 
 You do **not** need to run your own Lightning node. A Lightning address
 from any wallet provider is sufficient.
@@ -18,8 +18,9 @@ from any wallet provider is sufficient.
 ## 1. Generate a Nostr keypair
 
 Your Nostr keypair is your identity in the DPYC ecosystem. The `npub`
-(public key) identifies you on the Honor Chain. The `nsec` (secret key)
-signs Secure Courier DMs and proves ownership.
+(public key) is your secure DPYC identity — what other actors see and
+verify. The `nsec` (secret key) signs Secure Courier DMs and proves
+ownership.
 
 ```bash
 # Using the nak CLI (https://github.com/fiatjaf/nak)
@@ -45,8 +46,14 @@ Call: weather_how_to_join
 
 Your sponsor Authority will:
 - Register you in the [dpyc-community](https://github.com/lonniev/dpyc-community) registry
+- Provision your per-operator Neon schema with its own LOGIN role and hand you the `NEON_DATABASE_URL`
 - Provision a BTCPay store (or help you connect your own)
 - Provide the `BTCPAY_HOST`, `BTCPAY_API_KEY`, and `BTCPAY_STORE_ID` for your service
+
+Your ad valorem certification fee on each credit purchase compensates
+the Authority for these services — Neon persistence, certificate
+signing, BTCPay hosting (when offered), and the registry membership
+that makes your service discoverable.
 
 > **How Authorities are registered:** Authorities self-register via a
 > Nostr DM challenge-response protocol with the Prime Authority.
@@ -86,7 +93,7 @@ Set these env vars for your deployment:
 
 | Variable | Required | Description |
 |---|---|---|
-| `NEON_DATABASE_URL` | Yes | Postgres connection string for credit ledgers |
+| `NEON_DATABASE_URL` | Yes | Postgres connection string for credit ledgers — provided by your Authority (per-operator schema with its own LOGIN role) |
 | `BTCPAY_HOST` | Yes | BTCPay Server hostname (e.g. `btcpay.example.com`) |
 | `BTCPAY_API_KEY` | Yes | Scoped API key for your BTCPay store |
 | `BTCPAY_STORE_ID` | Yes | Your BTCPay store ID |
