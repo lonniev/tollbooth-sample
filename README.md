@@ -66,7 +66,6 @@ from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES, capabilit
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
-from tollbooth.slug_tools import make_slug_tool
 
 # 1. Define domain tool identities
 _DOMAIN_TOOLS = [
@@ -104,7 +103,6 @@ from pydantic import Field
 from fastmcp import FastMCP
 
 mcp = FastMCP("tollbooth-sample", ...)
-tool = make_slug_tool(mcp, "weather")
 
 # Create the runtime with merged standard + domain identities
 runtime = OperatorRuntime(
@@ -123,8 +121,10 @@ runtime = OperatorRuntime(
     ...
 )
 
-# Delegate all standard DPYC tools to the wheel
-register_standard_tools(mcp, "weather", runtime, ...)
+# Delegate all standard DPYC tools to the wheel.
+# register_standard_tools returns the slug-prefixed @tool decorator —
+# use it for the operator's own paid tools below.
+tool = register_standard_tools(mcp, "weather", runtime, ...)
 
 # Decorate each paid domain tool
 @tool
@@ -157,13 +157,13 @@ rollback blocks, no balance-warning plumbing. The decorator:
 
 ### Key patterns
 
-**`make_slug_tool(mcp, "weather")`** — Creates a `@tool` decorator that
-automatically prefixes all tool names with `weather_`. This keeps the MCP
-namespace clean when multiple operators share a host.
-
-**`register_standard_tools()`** — Registers all standard DPYC tools
-(balance, purchase, payment, pricing, Secure Courier, Oracle, constraints)
-from the tollbooth-dpyc wheel. Domain operators never define these manually.
+**`register_standard_tools(mcp, "weather", runtime, …)`** — Registers all
+standard DPYC tools (balance, purchase, payment, pricing, Secure Courier,
+Oracle, constraints) from the tollbooth-dpyc wheel, mounts oracle
+delegations under `<slug>_oracle_*`, and **returns** the slug-prefixed
+`@tool` decorator. Capture the return so you can use the same decorator
+for your own paid tools — every wire-exposed name on this operator then
+shares one slug prefix.
 
 **`validate_btcpay_creds`** — Credential validator that checks BTCPay
 credentials at receive time, not at first use. Invalid credentials are
