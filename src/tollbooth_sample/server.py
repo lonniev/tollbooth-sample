@@ -26,7 +26,6 @@ from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES, capabilit
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
-from tollbooth.slug_tools import make_slug_tool
 
 from tollbooth_sample import __version__
 
@@ -57,8 +56,6 @@ mcp = FastMCP(
         "surge pricing."
     ),
 )
-tool = make_slug_tool(mcp, "weather")
-
 # ---------------------------------------------------------------------------
 # Tool registry (domain tools only — standard identities are in the wheel)
 # ---------------------------------------------------------------------------
@@ -129,7 +126,7 @@ runtime = OperatorRuntime(
 # Register all standard DPYC tools from the wheel
 # ---------------------------------------------------------------------------
 
-register_standard_tools(
+tool = register_standard_tools(
     mcp,
     "weather",
     runtime,
