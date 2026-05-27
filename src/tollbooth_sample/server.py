@@ -60,18 +60,29 @@ mcp = FastMCP(
 # Tool registry (domain tools only — standard identities are in the wheel)
 # ---------------------------------------------------------------------------
 
+# Frozen UUIDs — declared once at tool birth and never changed.
+# Renaming any field below leaves these UUIDs intact and the pricing-
+# model rows in Neon stay keyed correctly.
+GET_CURRENT_WEATHER_UUID    = "b7327eb8-92b4-5252-84e0-ba3f437a16ed"
+GET_WEATHER_FORECAST_UUID   = "b6d0e596-3aec-5a62-980b-7875aa04d079"
+GET_HISTORICAL_WEATHER_UUID = "5608f3e9-44c4-5b28-9744-704af6d701f0"
+
+
 _DOMAIN_TOOLS = [
     ToolIdentity(
+        tool_id=GET_CURRENT_WEATHER_UUID,
         capability="get_current_weather",
         category="read",
         intent="Get current weather conditions",
     ),
     ToolIdentity(
+        tool_id=GET_WEATHER_FORECAST_UUID,
         capability="get_weather_forecast",
         category="write",
         intent="Get weather forecast",
     ),
     ToolIdentity(
+        tool_id=GET_HISTORICAL_WEATHER_UUID,
         capability="get_historical_weather",
         category="heavy",
         intent="Get historical weather data",
