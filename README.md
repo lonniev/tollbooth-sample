@@ -11,7 +11,7 @@ are handled automatically by the `OperatorRuntime`. Standard DPYC tools
 (balance, purchase, Secure Courier, Oracle, pricing, constraints) are delegated
 to the wheel via `register_standard_tools()`.
 
-**Version:** 0.2.0
+**Version:** 0.3.1
 
 ## The DPYC Economy
 
@@ -46,7 +46,9 @@ subscription nag screens, and KYC friction.
    credits are automatically rolled back via a compensating tranche. The
    user never pays for a failed call.
 
-5. **Honor Chain** — The DPYC ecosystem is a voluntary community:
+5. **Social Contract** — The DPYC ecosystem is a voluntary community bound
+   by transparent, auditable economic rules, with a Certification Chain that
+   cascades trust from the root:
    - **Citizens** — Users who consume API services
    - **Operators** — Developers who run MCP services (like this one)
    - **Authorities** — Certify operators and collect a small tax on purchases
@@ -260,10 +262,13 @@ python -m tollbooth_sample.server
 
 In STDIO mode, all tools work without credits — great for development.
 
-### Deploy on FastMCP Cloud
+### Deploy on Prefect Horizon
+
+The hosting platform is **Prefect Horizon** (FastMCP is the runtime/framework
+the server is built on).
 
 1. Push to GitHub
-2. Connect the repo on [FastMCP Cloud](https://app.fastmcp.cloud)
+2. Connect the repo on Prefect Horizon
 3. Set environment variables:
    - `TOLLBOOTH_NOSTR_OPERATOR_NSEC` — Nostr key for identity bootstrap
      (the only env var required to boot; all other secrets are delivered
@@ -287,6 +292,7 @@ pytest -v
 | `weather_check_balance`    | free     | Check credit balance                  |
 | `weather_purchase_credits` | free     | Buy credits via Lightning             |
 | `weather_check_payment`    | free     | Check invoice status                  |
+| `weather_request_adoption` | free     | Request adoption by an Authority (deferred-courtship onboarding) |
 | `weather_check_price`      | free     | Preview cost (shows constraint effects)|
 | `weather_service_status`   | free     | Health + constraint config summary    |
 | `weather_how_to_join`      | free     | DPYC onboarding instructions          |
@@ -297,12 +303,28 @@ pytest -v
 
 ## DPYC Ecosystem
 
-- [dpyc-community](https://github.com/lonniev/dpyc-community) — Registry + governance
-- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK for Tollbooth monetization
-- [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Authority MCP service
-- [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — Personal Brain MCP service
-- [excalibur-mcp](https://github.com/lonniev/excalibur-mcp) — Twitter MCP service
-- [dpyc-oracle](https://github.com/lonniev/dpyc-oracle) — Community concierge
+**Core**
+
+- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK (vault, auth, pricing, Lightning, Nostr identity)
+- [dpyc-community](https://github.com/lonniev/dpyc-community) — Governance registry: membership, advisories, threat model
+- [dpyc-oracle](https://github.com/lonniev/dpyc-oracle) — Community concierge (free onboarding + member lookup)
+- [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Certification backbone (Schnorr-signed certificates)
+- [tollbooth-sample](https://github.com/lonniev/tollbooth-sample) — Sample Operator (this canonical template)
+- [tollbooth-pricing-studio](https://github.com/lonniev/tollbooth-pricing-studio) — iOS pricing-model editor / operator console
+
+**Operators**
+
+- [cypher-mcp](https://github.com/lonniev/cypher-mcp) — Monetized graph answers: named Cypher templates over Neo4j/AuraDB
+- [schwab-mcp](https://github.com/lonniev/schwab-mcp) — Charles Schwab brokerage data
+- [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — TheBrain personal knowledge graph
+- [excalibur-mcp](https://github.com/lonniev/excalibur-mcp) — X/Twitter posting
+- [taxsort-mcp](https://github.com/lonniev/taxsort-mcp) — Tax classification + Cloudflare Pages UI
+- [optionality-mcp](https://github.com/lonniev/optionality-mcp) — Options analytics (brokerage-data operator)
+
+**Advocates & utilities**
+
+- [tollbooth-oauth2-collector](https://github.com/lonniev/tollbooth-oauth2-collector) — OAuth2 callback handler (advocate service)
+- [tollbooth-shortlinks](https://github.com/lonniev/tollbooth-shortlinks) — URL shortener utility
 
 ## License
 
