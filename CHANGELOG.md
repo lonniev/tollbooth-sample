@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] — 2026-06-29
+
+### Changed — BREAKING: sync with tollbooth-dpyc 0.57.0
+
+- **BREAKING:** renamed the possession-token tool parameter `proof` →
+  `dpop_token` on every paid tool (`current`, `forecast`, `historical`),
+  in lockstep with tollbooth-dpyc 0.57.0. The SDK unified the Secure Courier
+  possession token under the single name `dpop_token` (retiring `proof_token`
+  and `poison`), and `paid_tool` now extracts `kwargs["dpop_token"]`. No
+  backward-compat shim — callers must send `dpop_token`.
+- chore: pin tollbooth-dpyc bumped `==0.53.1` → `==0.57.0`; `uv.lock` regenerated.
+
 ## [Unreleased]
 - chore: track tollbooth-dpyc through 0.45.4 — picks up deferred-courtship adoption (`request_adoption`) and the refund-on-raise UX fix (paid_tool surfaces input errors as `tool_input_invalid`). No wire-API changes to this server's own tools.
 - docs: expand the DPYC Ecosystem list to the full network (adds cypher-mcp, schwab-mcp, taxsort-mcp, optionality-mcp, tollbooth-pricing-studio, oauth2-collector, shortlinks); correct the deploy section to Prefect Horizon (FastMCP is the runtime/framework); replace "Honor Chain" wording with "Social Contract" + "Certification Chain"; refresh the documented version to 0.3.1 and note the `request_adoption` standard tool.

@@ -154,7 +154,16 @@ tool = register_standard_tools(
 @tool
 @runtime.paid_tool(capability_uuid("get_current_weather"))
 async def current(
-    latitude: float, longitude: float, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "", proof: str = "",
+    latitude: float,
+    longitude: float,
+    npub: Annotated[
+        str,
+        Field(
+            description="Required. Your Nostr public key (npub1...) "
+            "for credit billing.",
+        ),
+    ] = "",
+    dpop_token: str = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -170,7 +179,17 @@ async def current(
 @tool
 @runtime.paid_tool(capability_uuid("get_weather_forecast"))
 async def forecast(
-    latitude: float, longitude: float, days: int = 7, npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "", proof: str = "",
+    latitude: float,
+    longitude: float,
+    days: int = 7,
+    npub: Annotated[
+        str,
+        Field(
+            description="Required. Your Nostr public key (npub1...) "
+            "for credit billing.",
+        ),
+    ] = "",
+    dpop_token: str = "",
 ) -> dict[str, Any]:
     """Get a multi-day weather forecast for a location.
 
@@ -191,7 +210,14 @@ async def historical(
     longitude: float,
     start_date: str,
     end_date: str,
-    npub: Annotated[str, Field(description="Required. Your Nostr public key (npub1...) for credit billing.")] = "", proof: str = "",
+    npub: Annotated[
+        str,
+        Field(
+            description="Required. Your Nostr public key (npub1...) "
+            "for credit billing.",
+        ),
+    ] = "",
+    dpop_token: str = "",
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
