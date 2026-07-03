@@ -26,6 +26,10 @@ async def get_current(lat: float, lon: float) -> dict:
                 "latitude": lat,
                 "longitude": lon,
                 "current_weather": "true",
+                # Open-Meteo defaults to °C + km/h; request US units and label them
+                # so the temperature can't be misread (e.g. 34°C ≈ 93°F).
+                "temperature_unit": "fahrenheit",
+                "windspeed_unit": "mph",
             },
         )
         resp.raise_for_status()
@@ -35,6 +39,7 @@ async def get_current(lat: float, lon: float) -> dict:
         "latitude": data.get("latitude"),
         "longitude": data.get("longitude"),
         "current_weather": data.get("current_weather"),
+        "current_weather_units": {"temperature": "°F", "windspeed": "mph", "winddirection": "°"},
         "timezone": data.get("timezone"),
     }
 
@@ -52,6 +57,11 @@ async def get_forecast(lat: float, lon: float, days: int = 7) -> dict:
                 "latitude": lat,
                 "longitude": lon,
                 "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode",
+                # US units (Open-Meteo defaults to °C/mm); daily_units in the
+                # response echoes these so the values are labeled.
+                "temperature_unit": "fahrenheit",
+                "windspeed_unit": "mph",
+                "precipitation_unit": "inch",
                 "forecast_days": days,
                 "timezone": "auto",
             },
@@ -91,6 +101,11 @@ async def get_historical(
                 "start_date": start,
                 "end_date": end,
                 "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode",
+                # US units (Open-Meteo defaults to °C/mm); daily_units in the
+                # response echoes these so the values are labeled.
+                "temperature_unit": "fahrenheit",
+                "windspeed_unit": "mph",
+                "precipitation_unit": "inch",
                 "timezone": "auto",
             },
         )
