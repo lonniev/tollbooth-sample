@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+- fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
+
 ## [0.4.0] — 2026-06-29
 
 ### Changed — BREAKING: sync with tollbooth-dpyc 0.57.0
@@ -14,10 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and `poison`), and `paid_tool` now extracts `kwargs["dpop_token"]`. No
   backward-compat shim — callers must send `dpop_token`.
 - chore: pin tollbooth-dpyc bumped `==0.53.1` → `==0.57.0`; `uv.lock` regenerated.
-
-## [Unreleased]
-- chore: track tollbooth-dpyc through 0.45.4 — picks up deferred-courtship adoption (`request_adoption`) and the refund-on-raise UX fix (paid_tool surfaces input errors as `tool_input_invalid`). No wire-API changes to this server's own tools.
-- docs: expand the DPYC Ecosystem list to the full network (adds cypher-mcp, schwab-mcp, taxsort-mcp, optionality-mcp, tollbooth-pricing-studio, oauth2-collector, shortlinks); correct the deploy section to Prefect Horizon (FastMCP is the runtime/framework); replace "Honor Chain" wording with "Social Contract" + "Certification Chain"; refresh the documented version to 0.3.1 and note the `request_adoption` standard tool.
 
 ## [0.3.1] — 2026-06-11
 - chore: track tollbooth-dpyc through 0.44.15 — SDK audit hardening (correctness fixes for credit-tranche expiration in 0.44.9 and proof-reply handling in 0.44.10; blocking mypy + coverage gates). No wire-API changes.
