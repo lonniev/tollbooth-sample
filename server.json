@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.lonniev/tollbooth-sample",
+  "description": "Educational Weather Stats MCP Service — Tollbooth DPYC monetization sample",
+  "version": "0.4.0",
+  "repository": {
+    "url": "https://github.com/lonniev/tollbooth-sample",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://tollbooth-sample.fastmcp.app/mcp"
+    }
+  ]
+}
