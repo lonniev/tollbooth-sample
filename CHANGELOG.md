@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
 
+## [0.4.1] — 2026-07-09
+
+### Changed
+
+- chore: pin tollbooth-dpyc bumped `==0.62.0` → `==0.62.1` — security-hardening
+  batch: invoice-owner check on credit settlement, GCM credential vault,
+  encrypted self-provisioning ledger, no plaintext audit. `uv.lock` regenerated.
+
 ## [0.4.0] — 2026-06-29
 
 ### Changed — BREAKING: sync with tollbooth-dpyc 0.57.0
