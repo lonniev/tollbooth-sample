@@ -11,7 +11,7 @@ are handled automatically by the `OperatorRuntime`. Standard DPYC tools
 (balance, purchase, Secure Courier, Oracle, pricing, constraints) are delegated
 to the wheel via `register_standard_tools()`.
 
-**Version:** 0.3.1
+**Version:** 0.4.1
 
 ## Build your own operator — the `bootstrap-dpyc-operator` skill
 
@@ -77,32 +77,44 @@ subscription nag screens, and KYC friction.
 
 ## How Tollbooth Monetization Works
 
-### ToolIdentity and `capability_uuid()`
+### ToolIdentity and the frozen `tool_id`
 
-Each domain tool is registered as a `ToolIdentity` with a capability name,
-category (pricing hint), and intent description. The `capability_uuid()`
-function derives a deterministic UUID v5 from the capability name, which the
-`@runtime.paid_tool()` decorator uses to look up pricing and track usage:
+Each domain tool is registered as a `ToolIdentity` with a **frozen `tool_id`**
+(an opaque UUID), a capability name, a category (pricing hint), and an intent
+description. Mint the UUID **once** at the tool's birth — run
+`capability_uuid("get_current_weather")` at a REPL (or `uuid.uuid4()`), then
+paste the result as a literal constant and never change it again. Freezing the
+literal is what lets you rename a capability later without orphaning its pricing
+rows in Neon. Do **not** call `capability_uuid(...)` at runtime; the identity
+must live in exactly one place:
 
 ```python
-from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES, capability_uuid
+from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
 
+# Frozen UUIDs — minted once at tool birth, never recomputed.
+GET_CURRENT_WEATHER_UUID    = "b7327eb8-92b4-5252-84e0-ba3f437a16ed"
+GET_WEATHER_FORECAST_UUID   = "b6d0e596-3aec-5a62-980b-7875aa04d079"
+GET_HISTORICAL_WEATHER_UUID = "5608f3e9-44c4-5b28-9744-704af6d701f0"
+
 # 1. Define domain tool identities
 _DOMAIN_TOOLS = [
     ToolIdentity(
+        tool_id=GET_CURRENT_WEATHER_UUID,
         capability="get_current_weather",
         category="read",
         intent="Get current weather conditions",
     ),
     ToolIdentity(
+        tool_id=GET_WEATHER_FORECAST_UUID,
         capability="get_weather_forecast",
         category="write",
         intent="Get weather forecast",
     ),
     ToolIdentity(
+        tool_id=GET_HISTORICAL_WEATHER_UUID,
         capability="get_historical_weather",
         category="heavy",
         intent="Get historical weather data",
@@ -115,10 +127,9 @@ TOOL_REGISTRY: dict[str, ToolIdentity] = {ti.tool_id: ti for ti in _DOMAIN_TOOLS
 ### The `@runtime.paid_tool()` decorator
 
 Every paid tool is a single decorator away from full DPYC monetization.
-The decorator takes the UUID of the tool identity (via `capability_uuid()`),
-handles debit, balance checks, constraint evaluation, rollback on failure,
-and low-balance warnings automatically. Your tool function contains only
-domain logic:
+The decorator takes the tool's frozen `tool_id` constant and handles debit,
+balance checks, constraint evaluation, rollback on failure, and low-balance
+warnings automatically. Your tool function contains only domain logic:
 
 ```python
 from typing import Annotated, Any
@@ -151,14 +162,14 @@ tool = register_standard_tools(mcp, "weather", runtime, ...)
 
 # Decorate each paid domain tool
 @tool
-@runtime.paid_tool(capability_uuid("get_current_weather"))
+@runtime.paid_tool(GET_CURRENT_WEATHER_UUID)
 async def current(
     latitude: float,
     longitude: float,
     npub: Annotated[str, Field(
         description="Required. Your Nostr public key (npub1...) for credit billing."
     )] = "",
-    proof: str = "",
+    dpop_token: str = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -172,7 +183,7 @@ rollback blocks, no balance-warning plumbing. The decorator:
 
 - Looks up the tool's pricing from the `ToolIdentity` registry by UUID
 - Extracts `npub` from the function arguments for billing
-- Validates `proof` for operator proof verification
+- Validates `dpop_token` for operator proof verification
 - Debits before calling your function (respecting ConstraintGate discounts)
 - Rolls back automatically if your function raises an exception
 - Appends a low-balance warning to the response when funds are running low
@@ -196,17 +207,17 @@ rejected immediately during the Secure Courier exchange.
 (BTCPay host, API key, store ID) so the Secure Courier flow can prompt
 for the right fields and validate them on delivery.
 
-### The `npub` and `proof` parameters
+### The `npub` and `dpop_token` parameters
 
-Every paid tool must accept `npub` and `proof` keyword arguments. The
-`npub` tells the runtime which patron to bill; `proof` carries the
+Every paid tool must accept `npub` and `dpop_token` keyword arguments. The
+`npub` tells the runtime which patron to bill; `dpop_token` carries the
 operator proof for verification:
 
 ```python
 npub: Annotated[str, Field(
     description="Required. Your Nostr public key (npub1...) for credit billing."
 )] = ""
-proof: str = ""
+dpop_token: str = ""
 ```
 
 The defaults of `""` keep both parameters optional in STDIO/dev mode.
@@ -217,10 +228,10 @@ The defaults of `""` keep both parameters optional in STDIO/dev mode.
 Tool call arrives
     |
     v
-@runtime.paid_tool(capability_uuid("get_current_weather"))
+@runtime.paid_tool(GET_CURRENT_WEATHER_UUID)
     |
     +-- UUID lookup in tool_registry -> ToolIdentity + pricing
-    +-- npub + proof extraction from kwargs
+    +-- npub + dpop_token extraction from kwargs
     +-- STDIO mode? --yes--> Skip gating, call function directly
     |
     +-- ConstraintGate evaluation (discounts, surge, supply caps)

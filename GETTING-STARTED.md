@@ -9,8 +9,8 @@ monetize an MCP service using the DPYC Tollbooth protocol.
 |---|---|---|
 | **Nostr keypair** | Your secure DPYC identity (`npub`/`nsec`) | `nak key generate` or any Nostr client (Damus, Amethyst, etc.) |
 | **Lightning wallet** | Receive sats from your patrons | Alby, Zeus, Phoenix, or any BOLT11-capable wallet |
-| **BTCPay credentials** | Create Lightning invoices for credit purchases | Self-hosted or provisioned by your sponsor Authority |
-| **Neon Postgres database** | Persistent credit ledgers | Provisioned by your sponsor Authority — a per-operator schema with its own LOGIN role |
+| **BTCPay credentials** | Create Lightning invoices for credit purchases | Provisioned by your sponsor Authority (or self-hosted), delivered via Secure Courier |
+| **Neon Postgres schema** | Persistent credit ledgers | Provisioned automatically by your sponsor Authority — a per-operator schema with its own LOGIN role; you never handle a connection string |
 
 You do **not** need to run your own Lightning node. A Lightning address
 from any wallet provider is sufficient.
@@ -46,9 +46,10 @@ Call: weather_how_to_join
 
 Your sponsor Authority will:
 - Register you in the [dpyc-community](https://github.com/lonniev/dpyc-community) registry
-- Provision your per-operator Neon schema with its own LOGIN role and hand you the `NEON_DATABASE_URL`
+- Provision your per-operator Neon schema with its own LOGIN role — wired to your
+  operator automatically during onboarding; you never set or receive a `NEON_DATABASE_URL`
 - Provision a BTCPay store (or help you connect your own)
-- Provide the `BTCPAY_HOST`, `BTCPAY_API_KEY`, and `BTCPAY_STORE_ID` for your service
+- Deliver your `btcpay_host`, `btcpay_api_key`, and `btcpay_store_id` via Secure Courier
 
 Your ad valorem certification fee on each credit purchase compensates
 the Authority for these services — Neon persistence, certificate
@@ -75,7 +76,7 @@ registry. The registry entry looks like:
   "services": [
     {
       "name": "my-service",
-      "url": "https://my-service.fastmcp.app/mcp",
+      "url": "https://<your-deployment-host>/mcp",
       "description": "What my service does"
     }
   ],
@@ -105,14 +106,18 @@ Optional knobs (also env-driven):
 | `CONSTRAINTS_ENABLED` | Enable the Constraint Engine (`true`/`false`) |
 | `CONSTRAINTS_CONFIG` | JSON constraint configuration |
 
-> **Everything else arrives via Secure Courier.** Your `NEON_DATABASE_URL`,
-> `BTCPAY_HOST`, `BTCPAY_API_KEY`, and `BTCPAY_STORE_ID` are NOT env
-> vars on your operator MCP. After deploy, your Authority delivers them
-> as an encrypted Nostr DM to your operator npub. Your MCP receives the
-> DM via the wheel's `receive_credentials` tool and stores the values
-> in its vault, encrypted at rest with the key derived from your nsec.
-> Rotating BTCPay credentials later? Same flow — no env var change, no
-> redeploy.
+> **Your BTCPay secrets arrive via Secure Courier.** Your `btcpay_host`,
+> `btcpay_api_key`, and `btcpay_store_id` are NOT env vars on your
+> operator MCP. After deploy, your Authority delivers them as an
+> encrypted Nostr DM to your operator npub. Your MCP receives the DM via
+> the wheel's `receive_credentials` tool and stores the values in its
+> vault, encrypted at rest with the key derived from your nsec. Rotating
+> BTCPay credentials later? Same flow — no env var change, no redeploy.
+
+> **Your Neon schema is wired automatically.** The per-operator Postgres
+> schema your Authority provisions is connected to your operator during
+> onboarding — you never set a `NEON_DATABASE_URL` env var or receive a
+> connection string. Persistence Just Works once you're registered.
 
 > **No Authority URL env var either.** Your Authority's service URL is
 > resolved from the dpyc-community registry at runtime, based on the
@@ -121,45 +126,89 @@ Optional knobs (also env-driven):
 
 ## 5. Install and wire up tollbooth-dpyc
 
+Pin the wheel **exactly** — match the version this repo pins in its
+[`pyproject.toml`](pyproject.toml):
+
 ```bash
-pip install "tollbooth-dpyc[nostr]>=0.1.78"
+pip install "tollbooth-dpyc[nostr]==0.62.4"
 ```
 
 The `[nostr]` extra installs Secure Courier dependencies for Nostr DM
-credential exchange.
+credential exchange. (If your operator runs long async jobs, use the
+`[nostr,prefect]` extra instead.)
 
 ### Minimal server skeleton
 
+You do **not** hand-write debit, rollback, or balance plumbing. The
+`OperatorRuntime` owns all of it — you declare your tool identities, hand
+them to the runtime, and wrap each domain function in a single decorator:
+
 ```python
+from typing import Annotated, Any
+from pydantic import Field
 from fastmcp import FastMCP
-from tollbooth import LedgerCache, NeonVault, BTCPayClient, ToolTier
-from tollbooth.tools import credits
 
-mcp = FastMCP("my-service")
+from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
+from tollbooth.runtime import OperatorRuntime, register_standard_tools
+from tollbooth.credential_templates import CredentialTemplate, FieldSpec
+from tollbooth.credential_validators import validate_btcpay_creds
 
-# ... configure vault, ledger, btcpay from env vars ...
+import my_service  # your pure-domain-logic module (no npub, no billing)
 
-@mcp.tool
-async def my_paid_tool(query: str) -> dict:
-    """A tool that costs 1 api_sat."""
-    # Debit
-    if not await ledger.debit(npub, "my_paid_tool", ToolTier.READ):
-        return {"error": "Insufficient balance"}
-    # Do work
-    try:
-        result = do_something(query)
-        return {"success": True, "data": result}
-    except Exception as e:
-        # Rollback on failure
-        ledger_entry = await ledger.get(npub)
-        ledger_entry.rollback_debit("my_paid_tool", ToolTier.READ)
-        ledger.mark_dirty(npub)
-        return {"error": str(e)}
+# Frozen UUID — minted once at a REPL (capability_uuid("my_paid_tool") or
+# uuid.uuid4()), then pasted as a literal and never recomputed.
+MY_PAID_TOOL_UUID = "…paste-your-uuid-here…"
+
+_DOMAIN_TOOLS = [
+    ToolIdentity(
+        tool_id=MY_PAID_TOOL_UUID,
+        capability="my_paid_tool",
+        category="read",          # read | write | heavy → pricing tier
+        intent="What this tool does",
+    ),
+]
+TOOL_REGISTRY = {ti.tool_id: ti for ti in _DOMAIN_TOOLS}
+
+mcp = FastMCP("my-service", instructions="…")
+
+runtime = OperatorRuntime(
+    tool_registry={**STANDARD_IDENTITIES, **TOOL_REGISTRY},
+    operator_credential_template=CredentialTemplate(
+        service="my-service-operator",
+        version=2,
+        description="Operator credentials for BTCPay Lightning payments",
+        fields={
+            "btcpay_host":     FieldSpec(required=True, sensitive=True),
+            "btcpay_api_key":  FieldSpec(required=True, sensitive=True),
+            "btcpay_store_id": FieldSpec(required=True, sensitive=True),
+        },
+    ),
+    credential_validator=validate_btcpay_creds,
+    service_name="My Service",
+)
+
+# Registers every standard DPYC tool (balance, purchase, Secure Courier,
+# Oracle, pricing, constraints) and returns the slug-prefixed @tool decorator.
+tool = register_standard_tools(mcp, "my", runtime, service_name="my-service")
+
+@tool
+@runtime.paid_tool(MY_PAID_TOOL_UUID)
+async def my_paid_tool(
+    query: str,
+    npub: Annotated[str, Field(
+        description="Required. Your Nostr public key (npub1...) for credit billing."
+    )] = "",
+    dpop_token: str = "",
+) -> dict[str, Any]:
+    """A paid tool — the decorator handles debit, rollback, and warnings."""
+    return await my_service.do_something(query)
 ```
 
-See this repository's [`server.py`](src/tollbooth_sample/server.py) for
-a complete working example with all credit tools, Oracle delegation, and
-the Constraint Engine.
+That is the complete paid tool: no manual `debit`/`rollback` calls. See
+this repository's [`server.py`](src/tollbooth_sample/server.py) for the
+full working example (three paid tools, Oracle delegation, the Constraint
+Engine) and the [README](README.md#how-tollbooth-monetization-works) for a
+deeper walk-through.
 
 ## 6. Deploy
 
@@ -187,10 +236,11 @@ runtime environment.
 ## 7. Receive your operator credentials via Secure Courier
 
 With your MCP up but vault still empty, your sponsor Authority delivers
-your `BTCPAY_*` credentials and your `NEON_DATABASE_URL` as an
-encrypted Nostr DM addressed to your operator npub. You — the human —
-drive the intake from any MCP client (Pricing Studio, Claude Desktop,
-Claude Code, etc.):
+your `btcpay_host`, `btcpay_api_key`, and `btcpay_store_id` as an
+encrypted Nostr DM addressed to your operator npub. (Your Neon schema is
+already wired automatically — it is not part of this exchange.) You — the
+human — drive the intake from any MCP client (Pricing Studio, Claude
+Desktop, Claude Code, etc.):
 
 1. Call `request_credential_channel(npub=<your_operator_npub>)` on the
    Authority's MCP. This signals the Authority to mint and send the DM.
@@ -202,8 +252,9 @@ Claude Code, etc.):
    AES-256-GCM key derived from your nsec.
 
 After this round trip your operator MCP has the BTCPay credentials it
-needs to mint Lightning invoices and the Neon URL it needs to persist
-patron ledgers — all without touching env vars or redeploying.
+needs to mint Lightning invoices — and, with the Authority-provisioned
+Neon schema already wired, it can persist patron ledgers — all without
+touching env vars or redeploying.
 
 Rotating credentials later (new BTCPay store, Authority change) follows
 the exact same flow.
