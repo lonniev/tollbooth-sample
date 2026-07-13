@@ -1,0 +1,32 @@
+{
+  "name": "tollbooth-dpyc",
+  "id": "tollbooth-dpyc",
+  "owner": {
+    "name": "lonniev"
+  },
+  "metadata": {
+    "description": "Tooling for building DPYC Tollbooth Operator MCP servers — monetize an API or MCP with Bitcoin Lightning micropayments and Nostr identity.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "bootstrap-dpyc-operator",
+      "source": "./",
+      "description": "Turn an existing REST API, stdio MCP, or HTTP MCP into a monetized DPYC Tollbooth Operator MCP.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Lonnie VanZandt"
+      },
+      "keywords": [
+        "dpyc",
+        "tollbooth",
+        "mcp",
+        "lightning",
+        "nostr",
+        "monetization",
+        "bitcoin"
+      ],
+      "category": "workflow"
+    }
+  ]
+}
