@@ -63,6 +63,42 @@ Enumerate the user's endpoints or existing MCP tools. For each, decide:
 Not every upstream endpoint must become a paid tool. Prefer selling complete, useful answers
 over raw data fragments.
 
+**Then pause and show the human the plan before generating anything.** Present, in plain
+language: the package/slug name, the live wheel pin you read in step 2, whether a per-call
+session module is warranted, and a small table of the catalog — capability, category, and
+**pricing tier** (`read`/`write`/`heavy`). Never quote a specific sat price; prices are set
+later, live, in Pricing Studio (dynamic pricing is the DPYC differentiator). Then render the
+network-stack diagram below (substitute the real `<Service>` name and `<slug>`) so they can see
+what they're about to stand up, and ask for a quick confirmation ("here's the plan — good to
+generate?") before moving on.
+
+```
+      YOU (operator, human in the loop)
+        │                         │
+        │ set & tune prices       │ drive credential intake
+        ▼                         ▼
+  ┌───────────────┐        ┌──────────────────────────────────────────────┐
+  │ Pricing Studio│ prices │        <Service> — YOUR OPERATOR MCP          │
+  │    (iOS)      ├───────▶│        FastMCP · deployed on Horizon          │
+  └───────────────┘  Neon  │  ┌────────────────────────────────────────┐  │
+                           │  │ <slug> domain module ◀─ wraps your API  │  │
+   Patron (Citizen)        │  │ @runtime.paid_tool(FROZEN_UUID) tools   │  │
+   + MCP client  ─────────▶│  ├────────────────────────────────────────┤  │
+   (Claude, etc.)  npub    │  │ tollbooth-dpyc SDK (the wheel)          │  │
+                    +sats  │  │  ledger · vault (AES-256-GCM) · pricing │  │
+                           │  │  /ConstraintGate · Secure Courier·audit │  │
+                           │  └────────────────────────────────────────┘  │
+                           └───┬─────────┬──────────┬───────────┬─────────┘
+                               ▼         ▼          ▼           ▼
+                         Neon Postgres  BTCPay▶  Sponsor     Nostr relays
+                         (your schema)  Lightning Authority   proofs·courier
+                         ledger+pricing invoices  certify +    DMs·audit
+                                                  provision        │
+                        your upstream ◀── domain      │            ▼
+                        REST API / MCP    calls        └──▶ DPYC Oracle +
+                                                            dpyc-community
+```
+
 ### 4. Generate the new project
 Create `<slug>-mcp/` as a **sibling** of the user's existing code — never modify their
 original repo. Mirror the template, changing only what must change:
@@ -85,7 +121,14 @@ original repo. Mirror the template, changing only what must change:
 - **tests/**: adapt `test_<slug>.py` from `test_weather.py` — cover happy paths **and
   adversarial inputs** (missing npub, out-of-range args, malformed upstream responses). Treat
   all tool arguments as adversarial.
-- **README.md**, fresh **CHANGELOG.md** (start at `0.1.0`), **LICENSE**.
+- **README.md**: mirror the template's, then add a short **"What you're building"** section
+  near the top containing the network-stack diagram from step 3 (with `<Service>`/`<slug>`
+  substituted for real) and a condensed **onboarding roadmap** (the numbered path from
+  `references/onboarding-checklist.md`: Nostr keypair → sponsor Authority → Secure Courier
+  secrets → set prices in Pricing Studio → deploy on Horizon). End that section with the
+  Pricing Studio call-to-action (see step 6). This travels with the project so the operator
+  keeps the orientation after the session ends.
+- fresh **CHANGELOG.md** (start at `0.1.0`), **LICENSE**.
 
 ### 5. Verify
 From inside `<slug>-mcp/`:
@@ -104,6 +147,13 @@ the user through `references/onboarding-checklist.md`, and point them at the clo
 `GETTING-STARTED.md` for the full narrative (Nostr keypair → sponsor Authority provisions Neon
 + BTCPay → deliver secrets via Secure Courier → set per-tool prices in Pricing Studio → deploy
 on Prefect Horizon).
+
+**Tell them to get Pricing Studio.** Their newly scaffolded tools start unpriced — no one can
+call a paid tool until it has a price. **Pricing Studio** (iOS) is the operator console: it
+reads and writes the pricing model live in Neon, so prices never live in code. Point them to
+the App Store, or the [tollbooth-pricing-studio](https://github.com/lonniev/tollbooth-pricing-studio)
+repo. Frame it as the payoff, not a chore: dynamic, per-tool pricing — surge, happy-hour,
+loyalty discounts, free trials — is what DPYC gives them that a flat paywall never could.
 
 ## What NOT to do
 - Do not reimplement encryption, vaults, auth, pricing, payments, or audit — the SDK owns them

@@ -1,7 +1,7 @@
 {
   "name": "bootstrap-dpyc-operator",
   "description": "Bootstrap a new DPYC Tollbooth Operator MCP from an existing REST API, stdio MCP, or HTTP MCP. Wraps your domain logic in the canonical operator pattern — Lightning micropayments, Nostr identity, per-tool pricing — using tollbooth-sample as the live template.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Lonnie VanZandt"
   },
