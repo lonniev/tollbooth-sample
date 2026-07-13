@@ -36,7 +36,7 @@ scaffolded tools start unpriced; set a price per tool (and any constraints / sur
 before patrons can call them. DPYC's differentiator is dynamic pricing — lean into it.
 
 ## 5. Deploy
-Deploy on FastMCP Cloud / Horizon using the generated `fastmcp.json` + `.fastmcp.yaml`. The
+Deploy on Prefect Horizon using the generated `fastmcp.json` + `.fastmcp.yaml`. The
 only env var the deployment needs is `TOLLBOOTH_NOSTR_OPERATOR_NSEC`.
 
 ## 6. Smoke test the live service

@@ -13,6 +13,27 @@ to the wheel via `register_standard_tools()`.
 
 **Version:** 0.3.1
 
+## Build your own operator — the `bootstrap-dpyc-operator` skill
+
+This repo doubles as a **Claude Code plugin**. The `bootstrap-dpyc-operator` skill turns your
+**existing REST API, stdio MCP, or HTTP MCP** into a monetized DPYC Operator MCP: it clones this
+template live, wraps your domain logic, and generates a deploy-ready project. You keep writing
+business logic — the SDK handles payments, identity, vault, audit, and pricing.
+
+Install it in Claude Code:
+
+```
+/plugin marketplace add lonniev/tollbooth-sample
+/plugin install bootstrap-dpyc-operator@tollbooth-dpyc
+```
+
+Then ask Claude to *"make my API a paid DPYC operator"* — the skill activates automatically by
+its description. It never touches your original code (it emits a sibling `<slug>-mcp/` project)
+and reads this repo's live wheel pin on every run, so it can't go stale.
+
+See [`skills/bootstrap-dpyc-operator/`](skills/bootstrap-dpyc-operator/) for the skill and its
+reference guides (canonical pattern, source adapters, sessions & vaults, onboarding checklist).
+
 ## The DPYC Economy
 
 **DPYC** stands for **Don't Pester Your Customer**. It's a philosophy and

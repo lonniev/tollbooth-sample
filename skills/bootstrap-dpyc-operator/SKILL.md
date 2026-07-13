@@ -103,7 +103,7 @@ The code is only half the story — the operator must join the DPYC network to g
 the user through `references/onboarding-checklist.md`, and point them at the cloned template's
 `GETTING-STARTED.md` for the full narrative (Nostr keypair → sponsor Authority provisions Neon
 + BTCPay → deliver secrets via Secure Courier → set per-tool prices in Pricing Studio → deploy
-on FastMCP Cloud / Horizon).
+on Prefect Horizon).
 
 ## What NOT to do
 - Do not reimplement encryption, vaults, auth, pricing, payments, or audit — the SDK owns them
