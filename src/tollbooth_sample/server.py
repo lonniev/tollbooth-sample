@@ -9,7 +9,7 @@ Only domain-specific weather tools are defined here.
 Run locally:
     python -m tollbooth_sample.server
 
-Deploy on FastMCP Cloud:
+Deploy on Prefect Horizon:
     See .fastmcp.yaml
 """
 

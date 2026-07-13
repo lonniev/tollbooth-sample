@@ -39,7 +39,8 @@ The most direct case (this is what `weather.py` does with Open-Meteo).
 The user already has MCP tools, just spoken over stdio (a `FastMCP` app run with the stdio
 transport, or the low-level MCP `Server`).
 
-1. **Drop the transport.** DPYC operators are SSE/HTTP on FastMCP Cloud (never stdio). You do
+1. **Drop the transport.** DPYC operators run as HTTP/SSE servers on the FastMCP framework
+   (never stdio; they deploy to Prefect Horizon). You do
    not keep their `mcp.run(transport="stdio")` entry point.
 2. **Lift each tool's body** into an async domain function in `src/<package>/<slug>.py`. Strip
    the MCP plumbing (the `@server.tool()` / `@mcp.tool` decorator, the `TextContent`
