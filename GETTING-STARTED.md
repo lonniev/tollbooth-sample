@@ -163,10 +163,13 @@ the Constraint Engine.
 
 ## 6. Deploy
 
-### FastMCP Cloud (recommended)
+### Horizon (recommended)
+
+Build it with FastMCP; run it on **Horizon** — the MCP gateway and
+governance layer from the team behind FastMCP and Prefect.
 
 1. Push your repo to GitHub
-2. Connect it on [FastMCP Cloud](https://app.fastmcp.cloud)
+2. Connect it on [Horizon](https://prefect.horizon.io)
 3. Set your env vars in the dashboard
 4. Your MCP service is live with a stable URL
 
