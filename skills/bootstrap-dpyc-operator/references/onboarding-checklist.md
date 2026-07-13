@@ -31,9 +31,11 @@ through the Secure Courier DM flow — never into env or code:
 3. Call `<slug>_receive_credentials(sender_npub=..., service="<slug>-operator", dpop_token=<phrase>)`.
 
 ## 4. Set your prices in Pricing Studio
-Tool prices live in Neon, edited via **Pricing Studio** (iOS) — never hardcoded. Newly
-scaffolded tools start unpriced; set a price per tool (and any constraints / surge / discounts)
-before patrons can call them. DPYC's differentiator is dynamic pricing — lean into it.
+Tool prices live in Neon, edited via **Pricing Studio** (iOS) — never hardcoded. Get it from
+the App Store, or the [tollbooth-pricing-studio](https://github.com/lonniev/tollbooth-pricing-studio)
+repo. Newly scaffolded tools start unpriced; set a price per tool (and any constraints / surge /
+discounts) before patrons can call them. DPYC's differentiator is dynamic pricing — surge,
+happy-hour, loyalty discounts, free trials — lean into it.
 
 ## 5. Deploy
 Deploy on Prefect Horizon using the generated `fastmcp.json` + `.fastmcp.yaml`. The
