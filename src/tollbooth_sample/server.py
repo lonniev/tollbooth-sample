@@ -22,7 +22,7 @@ from pydantic import Field
 
 from fastmcp import FastMCP
 
-from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES, capability_uuid
+from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
@@ -152,7 +152,7 @@ tool = register_standard_tools(
 
 
 @tool
-@runtime.paid_tool(capability_uuid("get_current_weather"))
+@runtime.paid_tool(GET_CURRENT_WEATHER_UUID)
 async def current(
     latitude: float,
     longitude: float,
@@ -177,7 +177,7 @@ async def current(
 
 
 @tool
-@runtime.paid_tool(capability_uuid("get_weather_forecast"))
+@runtime.paid_tool(GET_WEATHER_FORECAST_UUID)
 async def forecast(
     latitude: float,
     longitude: float,
@@ -204,7 +204,7 @@ async def forecast(
 
 
 @tool
-@runtime.paid_tool(capability_uuid("get_historical_weather"))
+@runtime.paid_tool(GET_HISTORICAL_WEATHER_UUID)
 async def historical(
     latitude: float,
     longitude: float,
