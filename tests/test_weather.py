@@ -119,6 +119,30 @@ async def test_get_historical_success():
     assert result["end_date"] == "2025-01-01"
 
 
+async def test_get_historical_rejects_out_of_range_coords():
+    """get_historical validates coordinates before calling Open-Meteo."""
+    result = await weather.get_historical(200, -999, "2026-01-01", "2026-01-02")
+
+    assert result["success"] is False
+    assert "latitude" in result["error"]
+
+
+async def test_get_current_rejects_out_of_range_longitude():
+    """get_current rejects an out-of-range longitude with a clear error."""
+    result = await weather.get_current(0, 999)
+
+    assert result["success"] is False
+    assert "longitude" in result["error"]
+
+
+async def test_get_forecast_rejects_out_of_range_latitude():
+    """get_forecast rejects an out-of-range latitude with a clear error."""
+    result = await weather.get_forecast(-91, 0)
+
+    assert result["success"] is False
+    assert "latitude" in result["error"]
+
+
 @respx.mock
 async def test_get_current_http_error():
     """get_current raises on non-200 response."""
