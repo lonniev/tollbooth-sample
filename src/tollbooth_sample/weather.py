@@ -22,6 +22,19 @@ _US_UNITS = {"temperature_unit": "fahrenheit", "windspeed_unit": "mph"}
 _DAILY_FIELDS = "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode"
 
 
+def _validate_coords(lat: float, lon: float) -> str | None:
+    """Return an error message if ``lat``/``lon`` are out of range, else ``None``.
+
+    Open-Meteo requires latitude in -90..90 and longitude in -180..180; sending
+    out-of-range values gets a raw upstream HTTP error, so reject them here.
+    """
+    if not -90 <= lat <= 90:
+        return f"latitude must be between -90 and 90, got {lat}"
+    if not -180 <= lon <= 180:
+        return f"longitude must be between -180 and 180, got {lon}"
+    return None
+
+
 async def _get(url: str, params: dict[str, Any]) -> dict[str, Any]:
     """GET ``url`` with ``params``, returning parsed JSON and raising on non-2xx."""
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -35,6 +48,9 @@ async def get_current(lat: float, lon: float) -> dict[str, Any]:
 
     Returns temperature, wind speed, wind direction, and weather code.
     """
+    error = _validate_coords(lat, lon)
+    if error is not None:
+        return {"success": False, "error": error}
     data = await _get(
         f"{_BASE}/forecast",
         {"latitude": lat, "longitude": lon, "current_weather": "true", **_US_UNITS},
@@ -54,6 +70,9 @@ async def get_forecast(lat: float, lon: float, days: int = 7) -> dict[str, Any]:
 
     Returns daily high/low temperatures, precipitation, and weather codes.
     """
+    error = _validate_coords(lat, lon)
+    if error is not None:
+        return {"success": False, "error": error}
     days = max(1, min(days, 16))
     data = await _get(
         f"{_BASE}/forecast",
@@ -89,6 +108,9 @@ async def get_historical(lat: float, lon: float, start: str, end: str) -> dict[s
 
     Returns daily temperature, precipitation, and weather codes.
     """
+    error = _validate_coords(lat, lon)
+    if error is not None:
+        return {"success": False, "error": error}
     data = await _get(
         f"{_ARCHIVE_BASE}/archive",
         {
