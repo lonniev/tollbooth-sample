@@ -217,7 +217,7 @@ Picks up the wheel's runtime-name + DRY pass:
 
 - Merge pull request #4 from lonniev/feat/invoice-dm-delivery
 - feat: wire invoice DM delivery via Secure Courier
-- chore: trigger FastMCP Cloud redeploy for tollbooth-dpyc 0.1.75
+- chore: trigger Horizon redeploy for tollbooth-dpyc 0.1.75
 - feat: wire surge pricing + fix example constraint configs (#2)
 - Merge pull request #1 from lonniev/chore/ecosystem-links
 - chore: pin tollbooth-dpyc>=0.1.74 for ECOSYSTEM_LINKS
