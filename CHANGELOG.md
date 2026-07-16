@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.2 — 2026-07-16
+
+### Changed — track tollbooth-dpyc 0.63.3
+
+- Bumped the pinned SDK to 0.63.3 (npub-proof challenge DM now stamps the request time). Also cuts a release for changes accumulated since the last tag.
+
 ## [Unreleased]
 
 - docs: modernize `README.md` and `GETTING-STARTED.md` to match the current runtime. README teaches the frozen `tool_id` literal (not runtime `capability_uuid(...)`) and renames the `proof` param to `dpop_token`; version bumped 0.3.1 → 0.4.1. GETTING-STARTED replaces the retired hand-rolled `LedgerCache`/`ledger.debit()` skeleton with the `OperatorRuntime` + `register_standard_tools` pattern, pins `==0.62.4`, and corrects the Neon story (schema provisioned + wired automatically by the Authority — operators never set or receive a `NEON_DATABASE_URL`; only BTCPay secrets travel via Secure Courier).
@@ -211,7 +217,7 @@ Picks up the wheel's runtime-name + DRY pass:
 
 - Merge pull request #4 from lonniev/feat/invoice-dm-delivery
 - feat: wire invoice DM delivery via Secure Courier
-- chore: trigger FastMCP Cloud redeploy for tollbooth-dpyc 0.1.75
+- chore: trigger Horizon redeploy for tollbooth-dpyc 0.1.75
 - feat: wire surge pricing + fix example constraint configs (#2)
 - Merge pull request #1 from lonniev/chore/ecosystem-links
 - chore: pin tollbooth-dpyc>=0.1.74 for ECOSYSTEM_LINKS
