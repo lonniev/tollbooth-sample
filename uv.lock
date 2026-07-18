@@ -1328,16 +1328,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 
 [[package]]
 name = "tollbooth-dpyc"
-version = "0.63.3"
+version = "0.64.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pynostr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/f7/2f0c65ba176ca886b8436e92e021c099f04e52dd391b04f23845a38c0d14/tollbooth_dpyc-0.63.3.tar.gz", hash = "sha256:00124eb637f2e5138f02c886471a35dd6c843736b9fbbf4c513df5b73c143836", size = 2595302, upload-time = "2026-07-16T19:26:22.739Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/8f/0cb96144fc13bafbb1cbcf77a8cc83ac82b195dbd10bbd8379f310662a89/tollbooth_dpyc-0.64.1.tar.gz", hash = "sha256:07ae07c2d148e30eb2fba25d80a72598be8f24733ca5976b7d84646889722cea", size = 2604467, upload-time = "2026-07-18T20:21:34.769Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/cb/181f1f1bdbf8419380e02930fb7d4aea341d753cea90bbaf7b8d798b5b42/tollbooth_dpyc-0.63.3-py3-none-any.whl", hash = "sha256:4d71874bc2a17a5aa1457c6c32c057ba309b2597a78b4ca80ca3ade1cfc805ab", size = 359680, upload-time = "2026-07-16T19:26:20.679Z" },
+    { url = "https://files.pythonhosted.org/packages/39/61/a75f6cd752512a7c62036165d629d62d9de90f752a130c4965b77c5d5ae8/tollbooth_dpyc-0.64.1-py3-none-any.whl", hash = "sha256:87ed3d45f9da5cc7dc258821aab22655d10d8ca9fa23c3b2ef332f8a7f75022a", size = 365618, upload-time = "2026-07-18T20:21:33.277Z" },
 ]
 
 [package.optional-dependencies]
@@ -1347,7 +1347,7 @@ nostr = [
 
 [[package]]
 name = "tollbooth-sample"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -1375,7 +1375,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], specifier = "==0.63.3" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], specifier = "==0.64.1" },
 ]
 provides-extras = ["dev"]
 
