@@ -307,6 +307,15 @@ the server is built on).
      via Secure Courier credential templates)
    - (Optional) `CONSTRAINTS_ENABLED=true` + `CONSTRAINTS_CONFIG=...`
 
+> **Heads-up for operators with long-running tools.** By default, claim-check /
+> async jobs run in-memory (`async_jobs.backend: "memory"`), which means **they do
+> not survive a Horizon recycle** (`durable_across_recycles: false`). That's fine for
+> this reference sample, which has no long-runners — but if you add a tool that defers
+> work to a background job, pin the `[prefect]` extra and deliver the durable-executor
+> secrets (`prefect_api_url` / `prefect_api_key` / `closure_seal_key`, the
+> `LONGRUNNER_CREDENTIAL_FIELDS`) via Secure Courier so jobs settle across redeploys.
+> Check your live state anytime with `service_status.async_jobs`.
+
 ### Run tests
 
 ```bash
