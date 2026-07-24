@@ -18,18 +18,14 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from pydantic import Field
-
 from fastmcp import FastMCP
-
-from tollbooth.tool_identity import ToolIdentity, STANDARD_IDENTITIES
-from tollbooth.runtime import OperatorRuntime, register_standard_tools
+from pydantic import Field
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
+from tollbooth.runtime import OperatorRuntime, register_standard_tools
+from tollbooth.tool_identity import STANDARD_IDENTITIES, ToolIdentity
 
-from tollbooth_sample import __version__
-
-from tollbooth_sample import weather
+from tollbooth_sample import __version__, weather
 
 logger = logging.getLogger(__name__)
 
