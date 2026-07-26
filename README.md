@@ -11,7 +11,7 @@ are handled automatically by the `OperatorRuntime`. Standard DPYC tools
 (balance, purchase, Secure Courier, Oracle, pricing, constraints) are delegated
 to the wheel via `register_standard_tools()`.
 
-**Version:** 0.4.1
+**Version:** 0.4.2
 
 ## Build your own operator — the `bootstrap-dpyc-operator` skill
 
@@ -258,7 +258,8 @@ CONSTRAINTS_ENABLED=true
 CONSTRAINTS_CONFIG='{"tool_constraints": {...}}'
 ```
 
-Supported constraint types:
+Common constraint types (the SDK registry holds more — `weather_list_constraint_types`
+enumerates the full set live):
 
 | Type              | Effect                                            |
 |-------------------|---------------------------------------------------|
@@ -268,11 +269,13 @@ Supported constraint types:
 | `finite_supply`   | Cap total invocations globally                    |
 | `loyalty_discount`| Discount after spending N sats                    |
 | `bulk_bonus`      | Discount after N invocations                      |
+| `surge_pricing`   | Demand-elastic multiplier during high demand      |
 
 Use `weather_check_price` to preview constraint effects without spending credits.
 
-See [`constraints/example_basic.json`](constraints/example_basic.json) and
-[`constraints/example_advanced.json`](constraints/example_advanced.json)
+See [`constraints/example_basic.json`](constraints/example_basic.json),
+[`constraints/example_advanced.json`](constraints/example_advanced.json), and
+[`constraints/example_surge.json`](constraints/example_surge.json)
 for configuration examples.
 
 ## Becoming an Operator
@@ -336,11 +339,11 @@ pytest -v
 | `weather_request_adoption` | free     | Request adoption by an Authority (deferred-courtship onboarding) |
 | `weather_check_price`      | free     | Preview cost (shows constraint effects)|
 | `weather_service_status`   | free     | Health + constraint config summary    |
-| `weather_how_to_join`      | free     | DPYC onboarding instructions          |
-| `weather_get_tax_rate`     | free     | Current certification tax rate        |
-| `weather_lookup_member`    | free     | Look up a DPYC member                |
-| `weather_about`            | free     | DPYC ecosystem description            |
-| `weather_network_advisory` | free     | Active network advisories             |
+| `weather_oracle_how_to_join`      | free | DPYC onboarding instructions          |
+| `weather_oracle_get_tax_rate`     | free | Current certification tax rate        |
+| `weather_oracle_lookup_member`    | free | Look up a DPYC member                 |
+| `weather_oracle_about`            | free | DPYC ecosystem description            |
+| `weather_oracle_network_advisory` | free | Active network advisories             |
 
 ## DPYC Ecosystem
 
