@@ -1,24 +1,27 @@
 # CODEOWNERS — the human gate for the agentic pipeline.
 #
-# Files listed here require @lonniev's review before merge (enforced by branch
-# protection: "Require review from Code Owners"). Files NOT listed here are eligible
-# for path-gated auto-merge (docs/tests/UI) once CI is green and QA applies qa/pass.
+# Files covered here require @lonniev's review before merge (enforced by branch
+# protection: "Require review from Code Owners"). Files left UNCOVERED are eligible for
+# path-gated auto-merge once CI is green and QA applies qa/pass.
 #
+# The catch-all comes first and the carve-outs come after it, because CODEOWNERS is
+# LAST-MATCH-WINS. Written the other way round — listing only the paths that need review —
+# anything not on the list is ungated, including files that do not exist yet. This repo was
+# in exactly that state: /src/, /pyproject.toml, /uv.lock and /.github/ were owned, so a new
+# top-level file would have landed unreviewed. Default-deny, then carve out.
+
+# Everything needs review …
+* @lonniev
+
+# … except the paths the pipeline is trusted to land on its own. These match
+# auto-merge.yml's low-risk allowlist, so what CODEOWNERS releases is exactly what
+# auto-merge will take.
+/tests/
+*.md
+
 # PROPAGATION NOTE: this reference file covers a weather Operator that has no local
-# ledger — the money paths live in the SDK. In the SDK / Authority repos, CODEOWNERS
-# must instead cover the ledger/credits/demurrage/certificate modules specifically
-# (e.g. tollbooth/runtime.py, vaults/neon.py, certificate.py, btcpay_client.py), so a
-# bad merge on a money path is caught as the financial bug it is.
-
-# Operator business logic — a real fix here deserves human eyes.
-/src/                @lonniev
-
-# Dependency surface — the SDK pin is a money-adjacent change; Renovate PRs land via
-# its own auto-merge rules, but a hand edit here needs review.
-/pyproject.toml      @lonniev
-/uv.lock             @lonniev
-
-# The pipeline itself and CI must not be edited unreviewed.
-/.github/            @lonniev
-
-# Docs, tests, and UI are intentionally uncovered so the pipeline can auto-land them.
+# ledger — the money paths live in the SDK. In the SDK / Authority repos the same
+# catch-all applies, but the carve-outs must be narrower: never uncover a ledger,
+# credits, demurrage or certificate module (tollbooth/runtime.py, vaults/neon.py,
+# certificate.py, btcpay_client.py), so a bad merge on a money path is caught as the
+# financial bug it is.
