@@ -47,6 +47,15 @@ page. Extraction now accepts either style.
 - fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
 - refactor: `weather.py` factors a shared `_get` helper and `_US_UNITS`/`_DAILY_FIELDS` constants (no behavior change — same requests, same responses). `server.py` references the frozen `tool_id` UUID constants directly in `@runtime.paid_tool(...)` instead of recomputing `capability_uuid(...)`, so a tool's identity lives in exactly one place.
 
+## [0.4.5] — 2026-08-22
+
+### Changed — track tollbooth-dpyc 0.87.1
+
+Picks up the relay-reliability work: `COURIER_RELAY_UNREACHABLE` so an
+unreachable pinned rendezvous is no longer reported as the patron never
+replying, relay-failure reporting to the Oracle, and a publish that counts
+only when the relay acknowledges that exact event.
+
 ## [0.4.1] — 2026-07-09
 
 ### Changed
