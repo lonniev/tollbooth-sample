@@ -47,6 +47,14 @@ page. Extraction now accepts either style.
 - fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
 - refactor: `weather.py` factors a shared `_get` helper and `_US_UNITS`/`_DAILY_FIELDS` constants (no behavior change — same requests, same responses). `server.py` references the frozen `tool_id` UUID constants directly in `@runtime.paid_tool(...)` instead of recomputing `capability_uuid(...)`, so a tool's identity lives in exactly one place.
 
+## [0.4.8] — 2026-08-22
+
+### Changed — track tollbooth-dpyc 0.88.0
+
+A relay down for a moment no longer becomes a permanent verdict.
+The bootstrap relay poll is retried on a bounded ladder, and a
+transient failure is no longer cached for the life of the process.
+
 ## [0.4.7] — 2026-08-22
 
 ### Changed — track tollbooth-dpyc 0.87.3
