@@ -41,6 +41,19 @@ page. Extraction now accepts either style.
 
 - Bumped the pinned SDK to 0.63.3 (npub-proof challenge DM now stamps the request time). Also cuts a release for changes accumulated since the last tag.
 
+## [0.4.9] — 2026-08-24
+
+### Security — track tollbooth-dpyc 0.88.1 (cryptography floor raised to >=49.0.0)
+
+Picks up the SDK's fix for GHSA-m2h6-j472-rp4c: the X.509 verifier accepted
+wildcard DNS SANs, escaping `permittedSubtrees`. The advisory is fixed in
+cryptography 49.0.0, and the SDK previously declared a floor of `>=46.0.5` —
+which admitted every affected release.
+
+No install here was exposed: the resolved lock already carried a patched
+cryptography. What changes is what a fresh resolve is *allowed* to land on.
+See tollbooth-dpyc v0.88.1.
+
 ## [Unreleased]
 
 - docs: modernize `README.md` and `GETTING-STARTED.md` to match the current runtime. README teaches the frozen `tool_id` literal (not runtime `capability_uuid(...)`) and renames the `proof` param to `dpop_token`; version bumped 0.3.1 → 0.4.1. GETTING-STARTED replaces the retired hand-rolled `LedgerCache`/`ledger.debit()` skeleton with the `OperatorRuntime` + `register_standard_tools` pattern, pins `==0.62.4`, and corrects the Neon story (schema provisioned + wired automatically by the Authority — operators never set or receive a `NEON_DATABASE_URL`; only BTCPay secrets travel via Secure Courier).
