@@ -1,6 +1,13 @@
 {
   "name": "Tollbooth Sample",
-  "server": "src/tollbooth_sample/server.py",
+  "source": {
+    "path": "src/tollbooth_sample/server.py",
+    "entrypoint": "mcp"
+  },
+  "environment": {
+    "type": "uv",
+    "project": "."
+  },
   "deployment": {
     "env": {
       "TOLLBOOTH_NOSTR_OPERATOR_NSEC": "${TOLLBOOTH_NOSTR_OPERATOR_NSEC}"
