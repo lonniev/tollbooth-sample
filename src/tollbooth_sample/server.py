@@ -217,7 +217,8 @@ async def historical(
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
-    Returns daily temperature and precipitation from the Open-Meteo archive.
+    Returns daily temperature and precipitation from Open-Meteo's archived
+    model runs, at roughly 2 km and covering 2018 onward.
 
     Args:
         latitude: Latitude (-90 to 90).
