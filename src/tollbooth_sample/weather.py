@@ -12,7 +12,17 @@ from typing import Any
 import httpx
 
 _BASE = "https://api.open-meteo.com/v1"
-_ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1"
+# Historical readings come from Open-Meteo's archived model runs rather than
+# the ERA5 reanalysis archive. ERA5 is ~9 km and smooths: measured over one
+# week in Vermont it put the daily swing at 15.5 °F against this feed's 20.7 °F,
+# almost all of it in the minimum, and it snapped the request 4.6 km away. This
+# feed answers ~2 km and snapped 1.4 km. It carries 2018 onward, where ERA5
+# reaches back decades — so a caller wanting the 1990s still wants ERA5.
+_HISTORY_BASE = "https://historical-forecast-api.open-meteo.com/v1"
+
+#: The first year the archived runs carry. Earlier dates do not error; they
+#: answer with nulls, which is the shape a caller reads as "no reading".
+HISTORY_FROM_YEAR = 2018
 _TIMEOUT = 15.0
 
 # Open-Meteo defaults to metric (°C, km/h, mm). Request US units on every call so
@@ -112,7 +122,7 @@ async def get_historical(lat: float, lon: float, start: str, end: str) -> dict[s
     if error is not None:
         return {"success": False, "error": error}
     data = await _get(
-        f"{_ARCHIVE_BASE}/archive",
+        f"{_HISTORY_BASE}/forecast",
         {
             "latitude": lat,
             "longitude": lon,

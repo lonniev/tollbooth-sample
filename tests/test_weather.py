@@ -92,8 +92,8 @@ async def test_get_forecast_clamps_days():
 
 @respx.mock
 async def test_get_historical_success():
-    """get_historical returns archive data."""
-    respx.get("https://archive-api.open-meteo.com/v1/archive").mock(
+    """get_historical returns the archived model runs."""
+    respx.get("https://historical-forecast-api.open-meteo.com/v1/forecast").mock(
         return_value=httpx.Response(
             200,
             json={
