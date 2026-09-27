@@ -1353,12 +1353,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 
 [[package]]
 name = "tollbooth-dpyc"
-version = "0.91.0"
-source = { git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=a59ec8f#a59ec8f665ffb7eb1744ef79d23b467126e19e09" }
+version = "0.92.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pynostr" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/2d/d537055ea8db2409ca62c0a0bf6219957fa20e78fef3a7c712aa614f1997/tollbooth_dpyc-0.92.0.tar.gz", hash = "sha256:af43d4c2bbdce0f7f8c0f7e39d49e03250b31c534301b26fcd468cb509c4a14e", size = 2786953, upload-time = "2026-09-27T13:20:51.361Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/fb/d6a6d0dff9e21b16da6d90a939b9b8bf670a8cd4a6269246912c4fd15f7a/tollbooth_dpyc-0.92.0-py3-none-any.whl", hash = "sha256:d3e1b6f4a1ae7a8c3af7daa460a1a724f85e545140fa8d487bfa428373014a8f", size = 453237, upload-time = "2026-09-27T13:20:49.52Z" },
 ]
 
 [package.optional-dependencies]
@@ -1398,7 +1402,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.0" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=a59ec8f" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], specifier = "==0.92.0" },
 ]
 provides-extras = ["dev"]
 
