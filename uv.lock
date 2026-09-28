@@ -1354,7 +1354,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 [[package]]
 name = "tollbooth-dpyc"
 version = "0.93.0"
-source = { git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=1a02736#1a02736c0b636d8575390b47fe9a93da2ae61fbf" }
+source = { git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=b560e45#b560e4525af363f596e158b09132e0ff362abc9e" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -1398,7 +1398,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.0" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=1a02736" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], git = "https://github.com/lonniev/tollbooth-dpyc.git?rev=b560e45" },
 ]
 provides-extras = ["dev"]
 
