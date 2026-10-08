@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
+
 ## 0.4.9 — 2026-08-24
 
 ### Security — track tollbooth-dpyc 0.88.1 (cryptography floor raised to >=49.0.0)
@@ -80,12 +82,6 @@ page. Extraction now accepts either style.
 ### Changed — track tollbooth-dpyc 0.63.3
 
 - Bumped the pinned SDK to 0.63.3 (npub-proof challenge DM now stamps the request time). Also cuts a release for changes accumulated since the last tag.
-
-## [Unreleased]
-
-- docs: modernize `README.md` and `GETTING-STARTED.md` to match the current runtime. README teaches the frozen `tool_id` literal (not runtime `capability_uuid(...)`) and renames the `proof` param to `dpop_token`; version bumped 0.3.1 → 0.4.1. GETTING-STARTED replaces the retired hand-rolled `LedgerCache`/`ledger.debit()` skeleton with the `OperatorRuntime` + `register_standard_tools` pattern, pins `==0.62.4`, and corrects the Neon story (schema provisioned + wired automatically by the Authority — operators never set or receive a `NEON_DATABASE_URL`; only BTCPay secrets travel via Secure Courier).
-- fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
-- refactor: `weather.py` factors a shared `_get` helper and `_US_UNITS`/`_DAILY_FIELDS` constants (no behavior change — same requests, same responses). `server.py` references the frozen `tool_id` UUID constants directly in `@runtime.paid_tool(...)` instead of recomputing `capability_uuid(...)`, so a tool's identity lives in exactly one place.
 
 ## [0.4.8] — 2026-08-22
 
@@ -332,4 +328,3 @@ Picks up the wheel's runtime-name + DRY pass:
 - chore: add ecosystem_links to service_status response
 - feat: initial tollbooth-sample weather MCP service
 - Initial commit
-
