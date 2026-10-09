@@ -3,29 +3,7 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
-
-### Docs — GETTING-STARTED.md says what the code does
-
-Checked line by line against tollbooth-dpyc 0.97.0 and this repo's `server.py`.
-
-- BTCPay credentials: the operator delivers them to its **own** MCP
-  (`request_credential_channel` → reply → `receive_credentials`). The guide said the
-  Authority DMs them and that the channel is opened on the Authority.
-- Adoption: documents `request_adoption` / `adoption_status` and what approval
-  provisions. The Neon connection arrives as an encrypted relay event, not a DM
-  exchange and not an env var.
-- Patrons: prove an npub (`request_npub_proof` / `receive_npub_proof`) and buy
-  credits. The guide said every patron couriers credentials and that the operator
-  registers them; this sample has no patron credential template.
-- Certification fee: debited from the **operator's** balance at its Authority, which
-  the operator must fund. The guide said the Authority paid it from its own balance.
-- Env vars: one. Removed the table of optional variables (`SEED_BALANCE_SATS`,
-  `CREDIT_TTL_SECONDS`, `CONSTRAINTS_*`, `TOLLBOOTH_NOSTR_RELAYS`) — nothing reads them.
-- Removed the `[prefect]` extra (the SDK has none), the hardcoded `0.62.4` pin, and
-  `weather_how_to_join` (the tool is `weather_oracle_how_to_join`).
-- BTCPay hosting: nothing in the protocol provisions a store; a hosted store is an
-  arrangement outside it.
+Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
 ## 0.4.9 — 2026-08-24
 
@@ -104,12 +82,6 @@ page. Extraction now accepts either style.
 ### Changed — track tollbooth-dpyc 0.63.3
 
 - Bumped the pinned SDK to 0.63.3 (npub-proof challenge DM now stamps the request time). Also cuts a release for changes accumulated since the last tag.
-
-## [Unreleased]
-
-- docs: modernize `README.md` and `GETTING-STARTED.md` to match the current runtime. README teaches the frozen `tool_id` literal (not runtime `capability_uuid(...)`) and renames the `proof` param to `dpop_token`; version bumped 0.3.1 → 0.4.1. GETTING-STARTED replaces the retired hand-rolled `LedgerCache`/`ledger.debit()` skeleton with the `OperatorRuntime` + `register_standard_tools` pattern, pins `==0.62.4`, and corrects the Neon story (schema provisioned + wired automatically by the Authority — operators never set or receive a `NEON_DATABASE_URL`; only BTCPay secrets travel via Secure Courier).
-- fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
-- refactor: `weather.py` factors a shared `_get` helper and `_US_UNITS`/`_DAILY_FIELDS` constants (no behavior change — same requests, same responses). `server.py` references the frozen `tool_id` UUID constants directly in `@runtime.paid_tool(...)` instead of recomputing `capability_uuid(...)`, so a tool's identity lives in exactly one place.
 
 ## [0.4.8] — 2026-08-22
 
@@ -356,4 +328,3 @@ Picks up the wheel's runtime-name + DRY pass:
 - chore: add ecosystem_links to service_status response
 - feat: initial tollbooth-sample weather MCP service
 - Initial commit
-
