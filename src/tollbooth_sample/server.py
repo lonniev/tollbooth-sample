@@ -16,14 +16,15 @@ Deploy on Prefect Horizon:
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
 from fastmcp import FastMCP
-from pydantic import Field
+from mcp.types import Icon
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
+from tollbooth.params import DpopToken, PatronNpub
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
-from tollbooth.tool_identity import STANDARD_IDENTITIES, ToolIdentity
+from tollbooth.tool_identity import READS_REMOTE, STANDARD_IDENTITIES, ToolIdentity
 
 from tollbooth_sample import __version__, weather
 
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     "tollbooth-sample",
+    version=__version__,
+    website_url="https://github.com/lonniev/tollbooth-sample",
+    icons=[Icon(src="https://tollbooth-dpyc.com/dpyc-logo.png", mimeType="image/png")],
     instructions=(
         "Weather Stats MCP Service — powered by Open-Meteo and monetized "
         "via Tollbooth DPYC Bitcoin Lightning micropayments.\n\n"
@@ -69,18 +73,24 @@ _DOMAIN_TOOLS = [
         tool_id=GET_CURRENT_WEATHER_UUID,
         capability="get_current_weather",
         category="read",
+        title="Current weather",
+        behavior=READS_REMOTE,
         intent="Get current weather conditions",
     ),
     ToolIdentity(
         tool_id=GET_WEATHER_FORECAST_UUID,
         capability="get_weather_forecast",
         category="write",
+        title="Weather forecast",
+        behavior=READS_REMOTE,
         intent="Get weather forecast",
     ),
     ToolIdentity(
         tool_id=GET_HISTORICAL_WEATHER_UUID,
         capability="get_historical_weather",
         category="heavy",
+        title="Historical weather",
+        behavior=READS_REMOTE,
         intent="Get historical weather data",
     ),
 ]
@@ -152,14 +162,8 @@ tool = register_standard_tools(
 async def current(
     latitude: float,
     longitude: float,
-    npub: Annotated[
-        str,
-        Field(
-            description="Required. Your Nostr public key (npub1...) "
-            "for credit billing.",
-        ),
-    ] = "",
-    dpop_token: str = "",
+    npub: PatronNpub = "",
+    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -178,14 +182,8 @@ async def forecast(
     latitude: float,
     longitude: float,
     days: int = 7,
-    npub: Annotated[
-        str,
-        Field(
-            description="Required. Your Nostr public key (npub1...) "
-            "for credit billing.",
-        ),
-    ] = "",
-    dpop_token: str = "",
+    npub: PatronNpub = "",
+    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get a multi-day weather forecast for a location.
 
@@ -206,14 +204,8 @@ async def historical(
     longitude: float,
     start_date: str,
     end_date: str,
-    npub: Annotated[
-        str,
-        Field(
-            description="Required. Your Nostr public key (npub1...) "
-            "for credit billing.",
-        ),
-    ] = "",
-    dpop_token: str = "",
+    npub: PatronNpub = "",
+    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
