@@ -1,0 +1,1 @@
+- Every weather tool carries a title and its behaviour (it reads, and reaches Open-Meteo); `npub` and `dpop_token` use the fleet's shared descriptions; the server reports its own version, website and icon.
