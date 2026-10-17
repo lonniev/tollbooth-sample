@@ -1,0 +1,1 @@
+- Connections authenticate as holders (tollbooth-dpyc holder bearer spike): connecting starts an OAuth Authorization Code flow, npubs proven through a connection stay with it, and paid calls pass only `npub`. A client without OAuth sends any placeholder bearer (e.g. `Bearer anonymous`) and keeps passing `dpop_token`. Pins tollbooth-dpyc by git commit until the spike is released.
