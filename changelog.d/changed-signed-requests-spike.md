@@ -1,0 +1,1 @@
+- Pins the tollbooth-dpyc identity-on-connection branch by commit, to prove signed requests live before 0.102.0.
