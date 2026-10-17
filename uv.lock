@@ -1354,7 +1354,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 [[package]]
 name = "tollbooth-dpyc"
 version = "0.101.0.dev0"
-source = { git = "https://github.com/lonniev/tollbooth-dpyc?rev=bbb169bba574753c17f38ca35e3eee4773dd04cd#bbb169bba574753c17f38ca35e3eee4773dd04cd" }
+source = { git = "https://github.com/lonniev/tollbooth-dpyc?rev=d5bf5fa42d5f072b39eda57a9b8fb7808f1ba4f6#d5bf5fa42d5f072b39eda57a9b8fb7808f1ba4f6" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -1398,7 +1398,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.0" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], git = "https://github.com/lonniev/tollbooth-dpyc?rev=bbb169bba574753c17f38ca35e3eee4773dd04cd" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], git = "https://github.com/lonniev/tollbooth-dpyc?rev=d5bf5fa42d5f072b39eda57a9b8fb7808f1ba4f6" },
 ]
 provides-extras = ["dev"]
 
