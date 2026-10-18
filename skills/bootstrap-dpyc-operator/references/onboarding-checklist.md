@@ -26,9 +26,9 @@ dpyc-oracle). Your sponsor Authority will:
 ## 3. Deliver operator secrets via Secure Courier
 Your BTCPay credentials (and any operator-wide upstream API secret) go into the encrypted vault
 through the Secure Courier DM flow — never into env or code:
-1. Call `<slug>_request_credential_channel` to get a welcome DM with a session phrase.
+1. Call `<slug>_request_credential_channel(sender_npub=<operator npub>, service="<slug>-operator")`; it sends a welcome DM and returns a `nonce`.
 2. Reply via your Nostr client with the secrets as JSON.
-3. Call `<slug>_receive_credentials(sender_npub=..., service="<slug>-operator", nonce=<phrase>)`.
+3. Call `<slug>_receive_credentials(sender_npub=..., service="<slug>-operator", nonce=<that nonce>)`.
 
 ## 4. Set your prices in Pricing Studio
 Tool prices live in Neon, edited via **Pricing Studio** (iOS) — never hardcoded. Get it from

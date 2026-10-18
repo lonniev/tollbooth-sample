@@ -236,10 +236,6 @@ registers you through the Oracle. Your registry entry looks like:
 Your service picks the connection up by itself and `weather_session_status`
 turns `ready`. You never set a connection string.
 
-> **The other path.** An Authority owner can adopt you in one call with
-> the Authority's `register_operator`, which takes two proofs at once:
-> yours and the Authority's own. The effect is identical.
-
 ## 6. Deliver your BTCPay credentials to your own service
 
 Your service cannot create invoices until it holds `btcpay_host`,
@@ -251,12 +247,12 @@ own** MCP, over Secure Courier. Your Authority is not involved.
 1. Call `weather_request_credential_channel(sender_npub=<your operator
    npub>, service="tollbooth-sample-operator")`. Your service sends a
    welcome DM to that npub with the fields to fill in, and the call
-   returns a `nonce` — the session phrase for this channel.
+   returns a `nonce`, which names this channel.
 2. Open the DM in a Nostr client that holds your operator key. Reply with
    the three values, keeping the `nonce` line exactly as shown, and
    send the reply through the `rendezvous_relay` the DM names.
 3. Call `weather_receive_credentials(sender_npub=<your operator npub>,
-   service="tollbooth-sample-operator", nonce=<the session phrase>)`
+   service="tollbooth-sample-operator", nonce=<that nonce>)`
    **once**, after you have replied. Each call drains the mailbox, so do
    not poll.
 
