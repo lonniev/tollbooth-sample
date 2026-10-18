@@ -138,7 +138,6 @@ async def my_paid_tool(
     npub: Annotated[str, Field(
         description="Required. Your Nostr public key (npub1...) for credit billing."
     )] = "",
-    dpop_token: str = "",
 ) -> dict[str, Any]:
     """A paid tool — the decorator handles debit, rollback, and warnings."""
     return await my_service.do_something(query)
@@ -204,15 +203,14 @@ registry. You ask from your own service; the Authority's owner decides.
 1. Call `weather_request_adoption` on **your own** MCP:
    - `authority_npub` — the Authority you chose in step 2
    - `service_url` — your MCP endpoint
-   - `dpop_token` — proof that you hold the operator nsec: a kind-27235
-     Nostr event signed by your operator key, whose `u` tag holds this
-     tool's exact name, with empty content and a `created_at` within 60
-     seconds. Only the operator can make this call.
+
+   Only the operator can make this call: sign the request with your
+   operator key (NIP-98 — the Pricing Studio does this for you).
 2. Your service delivers the request to the Authority, MCP to MCP. The
    Authority records it as pending and notifies its owner.
-3. The owner approves it on their own time (`approve_adoption`).
+3. The owner approves it on their own time (`approve_operator_request`).
 4. Poll `weather_adoption_status(authority_npub=…)` for
-   `pending` / `approved` / `rejected` / `provisioned`.
+   `pending` / `rejected` / `provisioned`.
 
 On approval the Authority provisions your Neon schema, publishes the
 connection to Nostr relays as an event encrypted to your npub, and
@@ -253,12 +251,12 @@ own** MCP, over Secure Courier. Your Authority is not involved.
 1. Call `weather_request_credential_channel(sender_npub=<your operator
    npub>, service="tollbooth-sample-operator")`. Your service sends a
    welcome DM to that npub with the fields to fill in, and the call
-   returns a `dpop_token` — the session phrase for this channel.
+   returns a `nonce` — the session phrase for this channel.
 2. Open the DM in a Nostr client that holds your operator key. Reply with
-   the three values, keeping the `dpop_token` line exactly as shown, and
+   the three values, keeping the `nonce` line exactly as shown, and
    send the reply through the `rendezvous_relay` the DM names.
 3. Call `weather_receive_credentials(sender_npub=<your operator npub>,
-   service="tollbooth-sample-operator", dpop_token=<the session phrase>)`
+   service="tollbooth-sample-operator", nonce=<the session phrase>)`
    **once**, after you have replied. Each call drains the mailbox, so do
    not poll.
 
@@ -299,11 +297,13 @@ for no credentials.
    `weather_request_npub_proof(patron_npub=…)`. Your service sends them a
    challenge DM.
 2. Patron replies to it from their Nostr client.
-3. Patron calls `weather_receive_npub_proof(patron_npub=…, dpop_token=…)`
-   once. It returns a new `dpop_token`, a proof grant your service signed.
-4. Patron calls `weather_purchase_credits(npub, dpop_token, amount_sats)`,
-   pays the Lightning invoice, and calls `weather_check_payment`.
-5. Patron calls paid tools, passing `npub` and `dpop_token` each time.
+3. Patron calls `weather_receive_npub_proof(patron_npub=…, nonce=…)` once,
+   on an OAuth connection. Your service signs a proof grant and keeps it with
+   that connection, which now holds the npub. (A patron whose client holds
+   the nsec skips steps 1–3: it signs each request instead.)
+4. Patron calls `weather_purchase_credits(npub, amount_sats)`, pays the
+   Lightning invoice, and calls `weather_check_payment`.
+5. Patron calls paid tools, passing `npub` each time.
    Each call debits their pre-funded balance. No popups, no interruptions.
 
 The paid-tool path checks two things: the proof and the balance. It does

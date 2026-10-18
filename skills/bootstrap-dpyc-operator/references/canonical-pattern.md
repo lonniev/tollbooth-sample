@@ -60,7 +60,7 @@ tool = register_standard_tools(mcp, "<slug>", runtime,
                                service_name="<slug>-mcp", service_version=__version__)
 
 # 5. Domain tools = @tool + @runtime.paid_tool(<frozen tool_id>). Every paid tool
-#    carries npub (billing identity) and dpop_token (proof) params. The decorators do the
+#    carries an npub (billing identity) param; the connection proves it. The decorators do the
 #    debit/ACL/pricing; the body is pure domain logic. Reference the SAME frozen constant
 #    you declared above. (The live template happens to write
 #    capability_uuid("get_current_weather") here — that resolves to the same literal, but
@@ -68,7 +68,7 @@ tool = register_standard_tools(mcp, "<slug>", runtime,
 @tool
 @runtime.paid_tool(GET_CURRENT_WEATHER_UUID)
 async def current(latitude: float, longitude: float,
-                  npub: str = "", dpop_token: str = "") -> dict:
+                  npub: str = "") -> dict:
     """Get current weather conditions for a location."""
     return await weather.get_current(latitude, longitude)
 
@@ -111,4 +111,4 @@ it instead.
 - Never hardcode npubs, nsecs, connection strings, or version numbers.
 - Treat every tool argument as adversarial — it comes from an AI agent. Validate at the
   boundary.
-- Every paid tool exposes `npub` and `dpop_token`. Don't drop them.
+- Every paid tool exposes `npub`. Don't drop it.
