@@ -111,7 +111,7 @@ original repo. Mirror the template, changing only what must change:
   set the `CredentialTemplate` fields to the operator's real secrets (BTCPay is always
   present; add upstream API secrets if any); wrap each domain function with
   `@tool` + `@runtime.paid_tool(<frozen tool_id constant>)`; every paid tool signature carries
-  `npub` and `dpop_token` params (copy the template's exactly).
+  an `npub` param (copy the template's exactly).
 - **config.py**: keep as-is — the only required env var is `TOLLBOOTH_NOSTR_OPERATOR_NSEC`.
 - **pyproject.toml**: set name/description; keep the **exact** `==` pin from the template. Add
   the user's upstream dependency (e.g. their REST client). If the operator runs long tasks

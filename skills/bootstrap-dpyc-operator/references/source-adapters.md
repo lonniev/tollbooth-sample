@@ -25,7 +25,7 @@ The most direct case (this is what `weather.py` does with Open-Meteo).
            return {"success": True, **resp.json()}
    ```
 2. In `server.py`, wrap each with `@tool` + `@runtime.paid_tool(<frozen tool_id constant>)`,
-   adding `npub`/`dpop_token` params, and call the domain function. (See
+   adding an `npub` param, and call the domain function. (See
    `canonical-pattern.md` for how tool_id is minted once and frozen.)
 3. If the REST API needs a **key**, decide whose key it is:
    - **Operator's own key** (one shared upstream account) → add it to the operator

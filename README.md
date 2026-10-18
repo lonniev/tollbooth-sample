@@ -169,7 +169,6 @@ async def current(
     npub: Annotated[str, Field(
         description="Required. Your Nostr public key (npub1...) for credit billing."
     )] = "",
-    dpop_token: str = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -183,7 +182,7 @@ rollback blocks, no balance-warning plumbing. The decorator:
 
 - Looks up the tool's pricing from the `ToolIdentity` registry by UUID
 - Extracts `npub` from the function arguments for billing
-- Validates `dpop_token` for operator proof verification
+- Checks that the connection proves that npub (a signed request, or an OAuth connection that holds it)
 - Debits before calling your function (respecting ConstraintGate discounts)
 - Rolls back automatically if your function raises an exception
 - Appends a low-balance warning to the response when funds are running low
@@ -207,20 +206,18 @@ rejected immediately during the Secure Courier exchange.
 (BTCPay host, API key, store ID) so the Secure Courier flow can prompt
 for the right fields and validate them on delivery.
 
-### The `npub` and `dpop_token` parameters
+### The `npub` parameter
 
-Every paid tool must accept `npub` and `dpop_token` keyword arguments. The
-`npub` tells the runtime which patron to bill; `dpop_token` carries the
-operator proof for verification:
+Every paid tool must accept an `npub` keyword argument. It tells the runtime
+which patron to bill; the connection proves the caller holds it:
 
 ```python
 npub: Annotated[str, Field(
     description="Required. Your Nostr public key (npub1...) for credit billing."
 )] = ""
-dpop_token: str = ""
 ```
 
-The defaults of `""` keep both parameters optional in STDIO/dev mode.
+The default of `""` keeps it optional in STDIO/dev mode.
 
 ### What the runtime handles under the hood
 
@@ -231,7 +228,7 @@ Tool call arrives
 @runtime.paid_tool(GET_CURRENT_WEATHER_UUID)
     |
     +-- UUID lookup in tool_registry -> ToolIdentity + pricing
-    +-- npub + dpop_token extraction from kwargs
+    +-- npub extraction from kwargs; the connection proves it
     +-- STDIO mode? --yes--> Skip gating, call function directly
     |
     +-- ConstraintGate evaluation (discounts, surge, supply caps)

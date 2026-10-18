@@ -22,7 +22,7 @@ from fastmcp import FastMCP
 from mcp.types import Icon
 from tollbooth.credential_templates import CredentialTemplate, FieldSpec
 from tollbooth.credential_validators import validate_btcpay_creds
-from tollbooth.params import DpopToken, PatronNpub
+from tollbooth.params import PatronNpub
 from tollbooth.runtime import OperatorRuntime, register_standard_tools
 from tollbooth.tool_identity import READS_REMOTE, STANDARD_IDENTITIES, ToolIdentity
 
@@ -166,7 +166,6 @@ async def current(
     latitude: float,
     longitude: float,
     npub: PatronNpub = "",
-    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -186,7 +185,6 @@ async def forecast(
     longitude: float,
     days: int = 7,
     npub: PatronNpub = "",
-    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get a multi-day weather forecast for a location.
 
@@ -208,7 +206,6 @@ async def historical(
     start_date: str,
     end_date: str,
     npub: PatronNpub = "",
-    dpop_token: DpopToken = "",
 ) -> dict[str, Any]:
     """Get historical weather data for a location and date range.
 
