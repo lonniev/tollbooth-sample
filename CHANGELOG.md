@@ -5,6 +5,54 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
+## [0.5.0] — 2026-10-21
+
+### Changed
+
+- docs: modernize `README.md` and `GETTING-STARTED.md` to match the current runtime. README teaches the frozen `tool_id` literal (not runtime `capability_uuid(...)`) and renames the `proof` param to `dpop_token`; version bumped 0.3.1 → 0.4.1. GETTING-STARTED replaces the retired hand-rolled `LedgerCache`/`ledger.debit()` skeleton with the `OperatorRuntime` + `register_standard_tools` pattern, pins `==0.62.4`, and corrects the Neon story (schema provisioned + wired automatically by the Authority — operators never set or receive a `NEON_DATABASE_URL`; only BTCPay secrets travel via Secure Courier).
+- fix: `current` returns labeled Fahrenheit/mph (was unlabeled Celsius — a 34°C reading looked like 34°F); `forecast` and `historical` request US units (°F/mph/inch), echoed in `daily_units`. Verified: Panton, VT → 93.4°F.
+- refactor: `weather.py` factors a shared `_get` helper and `_US_UNITS`/`_DAILY_FIELDS` constants (no behavior change — same requests, same responses). `server.py` references the frozen `tool_id` UUID constants directly in `@runtime.paid_tool(...)` instead of recomputing `capability_uuid(...)`, so a tool's identity lives in exactly one place.
+
+- Connections authenticate as holders (tollbooth-dpyc holder bearer spike): connecting starts an OAuth Authorization Code flow, npubs proven through a connection stay with it, and paid calls pass only `npub`. A client without OAuth sends any placeholder bearer (e.g. `Bearer anonymous`) and keeps passing `dpop_token`. Pins tollbooth-dpyc by git commit until the spike is released.
+
+- Every weather tool carries a title and its behaviour (it reads, and reaches Open-Meteo); `npub` and `dpop_token` use the fleet's shared descriptions; the server reports its own version, website and icon.
+
+- Pins tollbooth-dpyc 0.101.1, whose calls to Authorities and the Oracle carry the anonymous bearer.
+
+- Pins tollbooth-dpyc 0.102.0: a request signed with an npub's own key (NIP-98) acts as that npub with no grant.
+
+- Pins tollbooth-dpyc 0.102.1: a request signed with an npub's own key (NIP-98) acts as that npub with no grant.
+
+- GETTING-STARTED drops the removed `register_operator` path; the bootstrap skill's checklist names `sender_npub` and the returned `nonce`.
+
+- The README matches the code: no STDIO gating bypass (paid tools are gated everywhere), constraints live in the pricing model's per-tool chain rather than `CONSTRAINTS_ENABLED`, the long-runner extra is `[modal]` with `modal_token_id`/`modal_token_secret`/`modal_app_name`, the `npub` parameter uses `PatronNpub`, the stale version line is dropped, and the ecosystem list names the newer repos.
+
+- Dependencies refreshed to current releases (mcp/fastmcp 1.28.1/3.4.7 → 2.3.0/4.1.0; frontend minor/patch). No service stays on old transitive versions.
+
+- Tools take only `npub`; the connection proves it (a request signed with the npub's key, or an OAuth connection that holds it after the DM). The `dpop_token` argument is gone, and the Courier phrase is `nonce`. Pins tollbooth-dpyc 0.103.0.
+
+### Fixed
+
+- GETTING-STARTED.md says what the code does, checked line by line against
+  tollbooth-dpyc 0.97.0 and this repo's `server.py`:
+  - BTCPay credentials: the operator delivers them to its **own** MCP
+    (`request_credential_channel` → reply → `receive_credentials`). The guide said the
+    Authority DMs them and that the channel is opened on the Authority.
+  - Adoption: documents `request_adoption` / `adoption_status` and what approval
+    provisions. The Neon connection arrives as an encrypted relay event, not a DM
+    exchange and not an env var.
+  - Patrons: prove an npub (`request_npub_proof` / `receive_npub_proof`) and buy
+    credits. The guide said every patron couriers credentials and that the operator
+    registers them; this sample has no patron credential template.
+  - Certification fee: debited from the **operator's** balance at its Authority, which
+    the operator must fund. The guide said the Authority paid it from its own balance.
+  - Env vars: one. Removed the table of optional variables (`SEED_BALANCE_SATS`,
+    `CREDIT_TTL_SECONDS`, `CONSTRAINTS_*`, `TOLLBOOTH_NOSTR_RELAYS`) — nothing reads them.
+  - Removed the `[prefect]` extra (the SDK has none), the hardcoded `0.62.4` pin, and
+    `weather_how_to_join` (the tool is `weather_oracle_how_to_join`).
+  - BTCPay hosting: nothing in the protocol provisions a store; a hosted store is an
+    arrangement outside it.
+
 ## 0.4.9 — 2026-08-24
 
 ### Security — track tollbooth-dpyc 0.88.1 (cryptography floor raised to >=49.0.0)

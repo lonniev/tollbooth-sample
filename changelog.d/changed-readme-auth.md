@@ -1,1 +1,0 @@
-- GETTING-STARTED drops the removed `register_operator` path; the bootstrap skill's checklist names `sender_npub` and the returned `nonce`.
