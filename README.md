@@ -11,8 +11,6 @@ are handled automatically by the `OperatorRuntime`. Standard DPYC tools
 (balance, purchase, Secure Courier, Oracle, pricing, constraints) are delegated
 to the wheel via `register_standard_tools()`.
 
-**Version:** 0.4.2
-
 ## Build your own operator — the `bootstrap-dpyc-operator` skill
 
 This repo doubles as a **Claude Code plugin**. The `bootstrap-dpyc-operator` skill turns your
@@ -132,9 +130,9 @@ balance checks, constraint evaluation, rollback on failure, and low-balance
 warnings automatically. Your tool function contains only domain logic:
 
 ```python
-from typing import Annotated, Any
-from pydantic import Field
+from typing import Any
 from fastmcp import FastMCP
+from tollbooth.params import PatronNpub
 
 mcp = FastMCP("tollbooth-sample", ...)
 
@@ -152,6 +150,9 @@ runtime = OperatorRuntime(
         },
     ),
     credential_validator=validate_btcpay_creds,
+    # Connections prove the patron's npub (NIP-98 signed requests or an
+    # OAuth holder connection) against this host.
+    holder_auth_url="https://tollbooth-sample.fastmcp.app",
     ...
 )
 
@@ -166,9 +167,7 @@ tool = register_standard_tools(mcp, "weather", runtime, ...)
 async def current(
     latitude: float,
     longitude: float,
-    npub: Annotated[str, Field(
-        description="Required. Your Nostr public key (npub1...) for credit billing."
-    )] = "",
+    npub: PatronNpub = "",
 ) -> dict[str, Any]:
     """Get current weather conditions for a location.
 
@@ -183,10 +182,9 @@ rollback blocks, no balance-warning plumbing. The decorator:
 - Looks up the tool's pricing from the `ToolIdentity` registry by UUID
 - Extracts `npub` from the function arguments for billing
 - Checks that the connection proves that npub (a signed request, or an OAuth connection that holds it)
-- Debits before calling your function (respecting ConstraintGate discounts)
+- Debits before calling your function (walking the tool's constraint chain from the pricing model)
 - Rolls back automatically if your function raises an exception
 - Appends a low-balance warning to the response when funds are running low
-- Skips all gating in STDIO mode so local development works without credits
 
 ### Key patterns
 
@@ -209,15 +207,17 @@ for the right fields and validate them on delivery.
 ### The `npub` parameter
 
 Every paid tool must accept an `npub` keyword argument. It tells the runtime
-which patron to bill; the connection proves the caller holds it:
+which patron to bill; the connection proves the caller holds it. Use the SDK's
+`PatronNpub` type so every operator describes it the same way:
 
 ```python
-npub: Annotated[str, Field(
-    description="Required. Your Nostr public key (npub1...) for credit billing."
-)] = ""
+from tollbooth.params import PatronNpub
+
+npub: PatronNpub = ""
 ```
 
-The default of `""` keeps it optional in STDIO/dev mode.
+A paid tool called with an empty or invalid npub is refused (`npub is required`)
+before your function runs.
 
 ### What the runtime handles under the hood
 
@@ -229,9 +229,8 @@ Tool call arrives
     |
     +-- UUID lookup in tool_registry -> ToolIdentity + pricing
     +-- npub extraction from kwargs; the connection proves it
-    +-- STDIO mode? --yes--> Skip gating, call function directly
     |
-    +-- ConstraintGate evaluation (discounts, surge, supply caps)
+    +-- Constraint chain from the pricing model (discounts, surge, supply caps, coupons)
     +-- Balance check + debit
     |       |
     |       insufficient --> Return error (no function call)
@@ -248,12 +247,11 @@ Return result to caller
 
 ## Constraint Engine
 
-The ConstraintGate is an opt-in dynamic pricing layer. Enable it by setting:
-
-```bash
-CONSTRAINTS_ENABLED=true
-CONSTRAINTS_CONFIG='{"tool_constraints": {...}}'
-```
+Constraints are dynamic pricing steps that live in the operator's pricing model:
+each tool's `chain` in the model lists the steps the ConstraintGate walks on every
+call, and coupons bound to the tool are added after them. Author them in
+[Pricing Studio](https://github.com/lonniev/tollbooth-pricing-studio) or with
+`weather_set_pricing_model`; nothing is switched on by environment variable.
 
 Common constraint types (the SDK registry holds more — `weather_list_constraint_types`
 enumerates the full set live):
@@ -268,12 +266,8 @@ enumerates the full set live):
 | `bulk_bonus`      | Discount after N invocations                      |
 | `surge_pricing`   | Demand-elastic multiplier during high demand      |
 
-Use `weather_check_price` to preview constraint effects without spending credits.
-
-See [`constraints/example_basic.json`](constraints/example_basic.json),
-[`constraints/example_advanced.json`](constraints/example_advanced.json), and
-[`constraints/example_surge.json`](constraints/example_surge.json)
-for configuration examples.
+Use `weather_check_price` to preview constraint effects without spending credits —
+it walks exactly the chain the debit will.
 
 ## Becoming an Operator
 
@@ -283,7 +277,7 @@ BTCPay configuration, and deploying your first monetized MCP service.
 
 ## Quick Start
 
-### Local development (no gating)
+### Local development
 
 ```bash
 git clone https://github.com/lonniev/tollbooth-sample.git
@@ -292,7 +286,10 @@ pip install -e ".[dev]"
 python -m tollbooth_sample.server
 ```
 
-In STDIO mode, all tools work without credits — great for development.
+This serves over STDIO. There is no development bypass: paid tools are gated
+exactly as in production, and the patron's npub is proven by the HTTP
+connection (a NIP-98 signed request or an OAuth holder bearer), so over STDIO
+a paid tool is refused. Exercise paid tools against a deployed instance.
 
 ### Deploy on Prefect Horizon
 
@@ -303,17 +300,21 @@ the server is built on).
 2. Connect the repo on Prefect Horizon
 3. Set environment variables:
    - `TOLLBOOTH_NOSTR_OPERATOR_NSEC` — Nostr key for identity bootstrap
-     (the only env var required to boot; all other secrets are delivered
-     via Secure Courier credential templates)
-   - (Optional) `CONSTRAINTS_ENABLED=true` + `CONSTRAINTS_CONFIG=...`
+     (the only env var the operator needs; the Neon database URL arrives
+     from your Authority over Nostr, the relay set comes from the shared
+     dpyc-community registry, and all other secrets are delivered via
+     Secure Courier credential templates)
+
+Horizon reads the entrypoint and dependencies from [`fastmcp.json`](fastmcp.json).
 
 > **Heads-up for operators with long-running tools.** By default, claim-check /
-> async jobs run in-memory (`async_jobs.backend: "memory"`), which means **they do
-> not survive a Horizon recycle** (`durable_across_recycles: false`). That's fine for
-> this reference sample, which has no long-runners — but if you add a tool that defers
-> work to a background job, pin the `[prefect]` extra and deliver the durable-executor
-> secrets (`prefect_api_url` / `prefect_api_key` / `closure_seal_key`, the
-> `LONGRUNNER_CREDENTIAL_FIELDS`) via Secure Courier so jobs settle across redeploys.
+> async jobs run in-memory (`async_jobs.backend: "memory (default)"`), which means
+> **they do not survive a Horizon recycle** (`durable_across_recycles: false`). That's
+> fine for this reference sample, which has no long-runners — but if you add a tool
+> that defers work to a background job, pin the tollbooth-dpyc `[modal]` extra, spread
+> `LONGRUNNER_CREDENTIAL_FIELDS` into your operator credential template, and deliver
+> the durable-executor secrets (`modal_token_id` / `modal_token_secret` /
+> `modal_app_name`) via Secure Courier so jobs settle across redeploys.
 > Check your live state anytime with `service_status.async_jobs`.
 
 ### Run tests
@@ -342,6 +343,11 @@ pytest -v
 | `weather_oracle_about`            | free | DPYC ecosystem description            |
 | `weather_oracle_network_advisory` | free | Active network advisories             |
 
+The three weather tools are this operator's own; the rest come from
+`register_standard_tools()` and include identity (`weather_request_npub_proof`,
+`weather_receive_npub_proof`), Secure Courier, pricing, coupons, and notarization
+tools. `weather_get_operator_onboarding_status` reports what is still missing.
+
 ## DPYC Ecosystem
 
 **Core**
@@ -361,11 +367,16 @@ pytest -v
 - [excalibur-mcp](https://github.com/lonniev/excalibur-mcp) — X/Twitter posting
 - [taxsort-mcp](https://github.com/lonniev/taxsort-mcp) — Tax classification + Cloudflare Pages UI
 - [optionality-mcp](https://github.com/lonniev/optionality-mcp) — Options analytics (brokerage-data operator)
+- [goodearth-mcp](https://github.com/lonniev/goodearth-mcp) — Climate analytics for small specialty-crop farms
+- [beesknees-mcp](https://github.com/lonniev/beesknees-mcp) — The Bee's Knees, a monetized multiplayer race game
+- [roastify-mcp](https://github.com/lonniev/roastify-mcp) — Roastify coffee catalog and packaging artwork
+- [ChartRemotely-mcp](https://github.com/lonniev/ChartRemotely-mcp) — Puts a security on a desktop chart, by voice or tool call
 
 **Advocates & utilities**
 
 - [tollbooth-oauth2-collector](https://github.com/lonniev/tollbooth-oauth2-collector) — OAuth2 callback handler (advocate service)
 - [tollbooth-shortlinks](https://github.com/lonniev/tollbooth-shortlinks) — URL shortener utility
+- [tollbooth-web](https://github.com/lonniev/tollbooth-web) — Shared browser SDK for operator front ends
 
 ## License
 
