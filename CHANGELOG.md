@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
+## [0.5.1] — 2026-11-19
+
+### Changed
+
+- The MCP Registry listing carries a title (Tollbooth Sample) and a link to https://cafe.tollbooth-dpyc.com/products/tollbooth-sample.
+
 ## [0.5.0] — 2026-10-21
 
 ### Changed
