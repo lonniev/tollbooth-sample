@@ -4,7 +4,7 @@
   "title": "Tollbooth Sample",
   "description": "Educational Weather Stats MCP Service — Tollbooth DPYC monetization sample",
   "websiteUrl": "https://cafe.tollbooth-dpyc.com/products/tollbooth-sample",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "repository": {
     "url": "https://github.com/lonniev/tollbooth-sample",
     "source": "github"
